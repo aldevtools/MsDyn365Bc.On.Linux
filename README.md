@@ -52,6 +52,11 @@ Just to start BC and run AL tests:
 Running on an Apple Silicon Mac (podman + Rosetta)? See [MacOS.md](MacOS.md)
 for the extra setup steps and the `docker-compose.macos.yml` overlay.
 
+On an **arm64 Linux** host (Ampere, Graviton, Snapdragon X, …) the images are
+x86-64 only and there is no supported path yet. [ARM64.md](ARM64.md) records
+what has been measured about closing that gap — it is an investigation, not a
+how-to.
+
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and
 invoked via `docker compose exec`, so all the .NET work happens in the
