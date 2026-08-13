@@ -1,0 +1,56 @@
+# WORKING recipe: Business Central with Base Application, running under FEX-Emu
+# on an arm64 host. Measured 2026-08-12 on Qualcomm Oryon / Ubuntu 26.04 /
+# FEX 2608 armv8.4:
+#
+#   Ready for extensions. Total startup: 113s
+#   Published: Application, Base Application, Business Foundation, System Application
+#   GET /BC/api/v2.0/companies  -> HTTP 200, "CRONUS International Ltd."
+#   GET /BC/ODataV4/$metadata   -> HTTP 200, 1.18 MB of Base App metadata
+#   uname -m inside the container = x86_64; host = aarch64
+#
+# THREE settings, and each looks useless when tested without the others:
+#
+# 1. FEX_VECTORTSOENABLED / FEX_MEMCPYSETTSOENABLED — FEX applies x86 store
+#    ordering to ordinary loads/stores by default but NOT to vector accesses or
+#    memcpy/memset patterns, and .NET uses 16-byte SIMD constantly for struct
+#    copies and Span operations. Do NOT add FEX_HALFBARRIERTSOENABLED: it fails
+#    differently (ArgumentException in Mono.Cecil.ModuleWriter.Write).
+#    Do NOT set FEX_TSOENABLED=0 — a widely copy-pasted community FEX config does,
+#    and it is an independent corruption source.
+#
+# 2. DOTNET_EnableWriteXorExecute=0 — CoreCLR writes JIT code through a different
+#    virtual alias than it executes, which defeats FEX's self-modifying-code
+#    tracking, so FEX can keep executing a stale translation. Exposure scales with
+#    JIT volume, which is why this only became necessary once Base Application was
+#    in. Tested alone (pre-TSO) it looked useless; it is not.
+#
+# 3. DOTNET_TieredCompilation=0 — already load-bearing for JMP-hook integrity on
+#    x64 (CLAUDE.md); under emulation it also stops runtime code rewriting.
+#
+# Consider adding DOTNET_INTERNAL_ThreadSuspendInjection=0 as well: it fixes the
+# minimal CoreCLR-under-emulation reproducer 20/20 and is what Microsoft's own
+# runtime does automatically for x64-on-arm64 Windows emulation. It was not
+# required for this boot. Caveat from docs/PRIOR-ART.md: with injection disabled,
+# a hot managed loop containing no calls, allocations or blocking can stall
+# SuspendEE indefinitely — BC's workload is call-dense so this converges, but it
+# deserves a watchdog rather than optimism.
+services:
+  # SQL Server is the stability limit, not the NST. Measured 2026-08-12: the NST
+  # stayed healthy 3 hours while sqlservr aborted (SIGABRT, not OOM, SQLPAL frames)
+  # at ~2 hours. The NST then hangs on the dead DB while docker still reports it
+  # "healthy" — that healthcheck only tests for the /tmp/bc-ready file.
+  #
+  # Do NOT put the FEX TSO knobs on sql. Tried twice, sqlservr aborted within
+  # minutes both times; without them it once ran ~2 hours. 2 samples is weak, so
+  # this is a caution not a proof — but the knobs demonstrably do not help SQL,
+  # and SQL is native C++ so none of the CoreCLR mitigations apply to it either.
+  bc:
+    environment:
+      FEX_VECTORTSOENABLED: "1"
+      FEX_MEMCPYSETTSOENABLED: "1"
+      DOTNET_EnableWriteXorExecute: "0"
+      DOTNET_gcServer: "1"
+      DOTNET_TieredCompilation: "0"
+      BC_CLEAR_ALL_APPS: "selective"
+      BC_KEEP_APP_IDS: "8874ed3a-0643-4247-9ced-7a7002f7135d,63ca2fa4-4f03-4f2b-a480-172fef340d3f,f3552374-a1f2-4356-848e-196002525837,437dbf0e-84ff-417a-965d-ed2bb9650972,c1335042-3002-4257-bf8a-75c898ccb1b8"
+      BC_SKIP_APP_PUBLISH: "true"

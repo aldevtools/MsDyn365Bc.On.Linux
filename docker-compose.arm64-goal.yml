@@ -1,0 +1,57 @@
+# Target configuration: all apps + web client, with every mitigation that has a
+# mechanism behind it. Layer AFTER docker-compose.arm64.yml.
+services:
+  sql:
+    # Restart automatically. Under emulation MTBF cannot be driven to infinity,
+    # but mean-time-to-recovery can be held to a couple of minutes.
+    restart: on-failure:10
+    # Fewer visible CPUs => fewer SOS schedulers and worker threads => fewer
+    # threads that can be mid-instruction when a signal lands. SQLPAL rewrites
+    # ucontext in signal handlers like CoreCLR does, so this is the same defect
+    # class — but SQLPAL has no ThreadSuspendInjection equivalent, so thread-count
+    # reduction is the only lever available. Also matches long-standing Microsoft
+    # guidance for NAV/BC: its ORM emits OLTP-shaped queries that gain nothing
+    # from parallelism.
+    cpuset: "0-3"
+    environment:
+      MSSQL_MEMORY_LIMIT_MB: "3072"
+  bc:
+    restart: on-failure:10
+    # The stock healthcheck curls ODataV4/Company, which the NST answers from
+    # cache — that is how this stack reported "healthy" for an hour while SQL was
+    # dead and every request hung. Probe BOTH tiers: the dev endpoint for the NST,
+    # and a real TDS roundtrip from inside the bc container for the database.
+    # Deliberately NOT an OData business query: those are the calls that crash the
+    # emulated NST, and a healthcheck must never be the thing that kills the app.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata >/dev/null && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -Q 'SELECT 1' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 25s
+      retries: 3
+      start_period: 600s
+    environment:
+      # --- the three that got Base Application booting ---
+      FEX_VECTORTSOENABLED: "1"
+      FEX_MEMCPYSETTSOENABLED: "1"
+      DOTNET_EnableWriteXorExecute: "0"
+      # --- the mechanism behind heavy-query crashes ---
+      # Light calls survive, business queries die. Business queries allocate and
+      # JIT heavily -> frequent GC -> frequent SuspendEE -> SIGRTMIN injected into
+      # threads mid-instruction, which is the corruption chain the minimal repro
+      # pins at 0/20 -> 20/20. This is a retail knob and is what Microsoft's own
+      # runtime does automatically for x64-on-arm64 Windows emulation.
+      # Residual risk: a call-free, allocation-free managed hot loop can stall
+      # SuspendEE with no retail timeout. AL-compiled code is pathologically
+      # call-dense, so exposure is BCL/platform loops, not business logic.
+      DOTNET_INTERNAL_ThreadSuspendInjection: "0"
+      DOTNET_gcServer: "1"
+      DOTNET_TieredCompilation: "0"
+      # --- all apps, R2R preserved ---
+      # 'none' keeps every pre-installed extension. Do NOT republish through the
+      # dev endpoint: that disables ReadyToRun and recompiles, which both adds
+      # boot concurrency and removes precompiled code (less JIT = less for FEX's
+      # SMC tracking to get wrong).
+      BC_CLEAR_ALL_APPS: "none"
+      BC_SKIP_APP_PUBLISH: "true"
+      # --- web client on the image's own Kestrel host (docs/WEBCLIENT-POC.md) ---
+      BC_WEBCLIENT: "1"
