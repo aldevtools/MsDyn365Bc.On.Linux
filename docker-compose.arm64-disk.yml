@@ -1,29 +1,29 @@
-# Move SQL's data directory off tmpfs onto disk.
+# SQL storage layout for the emulated arm64 stack.
 #
-# docker-compose.yml uses `tmpfs: /var/opt/mssql/data:size=4g` so the first-boot
-# restore is fast. Two problems under this workload:
-#   1. HARD 4 GB CAP. CRONUS restores at ~1.06 GB, but the DB grows as apps are
-#      published (app packages and R2R DLLs are stored as blobs in BC's tables).
-#      A full ~137-app publish can plausibly exceed 4 GB — and SQL Server aborting
-#      on a write failure looks identical to the emulation crashes we were chasing.
-#   2. It is RAM. 4 GB of tmpfs plus SQL's 2 GB buffer pool plus an emulated NST
-#      (whose FEX reservation is large) on a 30 GB box is avoidable pressure.
-# Disk here is NVMe with ~860 GB free, so the restore cost is small and the cap
-# disappears.
+# MEASURED THE HARD WAY, both directions:
+#
+#  * The stock 4 GB tmpfs is too small once apps are published (packages and R2R
+#    DLLs are blobs in BC's tables), and a SQL write failure on a full
+#    filesystem is indistinguishable from the emulation aborts.
+#  * But moving /var/opt/mssql/data to a PERSISTENT volume was worse. It makes
+#    every restart depend on crash recovery of the existing files, and under
+#    emulation that either hangs (container up 1h, sqlservr at 2% CPU, errorlog
+#    frozen, no new dump) or crash-loops on startup (10 restarts, exit 248).
+#    tmpfs wins precisely because it throws the files away: SQL always starts
+#    clean, with no recovery to perform.
+#
+# So: keep the data dir on tmpfs, just bigger, and put BACKUPS on a persistent
+# volume instead. scripts/arm64-backup.sh writes there on a timer and
+# scripts/arm64-recover.sh restores the newest one into the fresh tmpfs — which
+# preserves developers' work without reintroducing crash recovery.
+#
+# size=16g is a cap, not a reservation: tmpfs consumes only what is written
+# (~1.2 GB for a restored CRONUS, growing with published apps).
 services:
   sql:
-    # `tmpfs: []` does NOT clear a base-file tmpfs — compose merges the lists and
-    # you get 'target already mounted as tmpfs[0]'. !reset (compose 2.24+) is the
-    # documented way to drop an inherited key.
-    tmpfs: !reset null
+    tmpfs:
+      - /var/opt/mssql/data:size=16g,uid=10001,gid=10001
     volumes:
-      - bc-sqldata:/var/opt/mssql/data
-      - ${BC_ARTIFACTS_DIR:-bc-artifacts}:/bc/artifacts:ro
-      - ${BC_LICENSE_HOST_PATH:-/dev/null}:/bc/custom-license.bclicense:ro
+      - bc-sqlbackups:/backups
 volumes:
-  bc-sqldata:
-# NOTE: a named volume is created root-owned, but the mssql image runs as uid
-# 10001 and SQL fails startup with HRESULT 0x80070005 (access denied) in
-# BootstrapSystemDataDirectories(). The base compose avoids this for tmpfs via
-# `uid=10001,gid=10001`; for a volume you must chown it once:
-#   docker run --rm -v <project>_bc-sqldata:/d alpine chown -R 10001:10001 /d
+  bc-sqlbackups:
