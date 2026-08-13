@@ -1,0 +1,553 @@
+bc-1  | [entrypoint] Script started at Wed Aug 12 02:01:53 PM UTC 2026
+bc-1  | [entrypoint] [0s] Artifacts already cached (args|sandbox|28.4|w1) — skipping download.
+bc-1  | [entrypoint] [0s] Step 1 (artifacts): 0s
+bc-1  | [entrypoint] [1s] Disk: 864G free
+bc-1  | [entrypoint] [1s] Reading manifest...
+bc-1  | -rw-r--r-- 1 root root 223 Aug 12 13:49 /bc/artifacts/app/manifest.json
+bc-1  | [entrypoint] [1s] Platform: 28.0.53445.0, NAV dir: 280, DB: BusinessCentral-W1.bak
+bc-1  | [entrypoint] [1s] Service tier already set up.
+bc-1  | [entrypoint] [2s] BC targets .NET 8.0.0 — runtime /usr/share/dotnet/shared/Microsoft.NETCore.App/8.0.29, refasm /bc/refasm
+bc-1  | [entrypoint] [2s] Replaced OpenTelemetry.Exporter.Geneva.dll with stub/unix version
+bc-1  | [entrypoint] [2s] Replaced Microsoft.Data.SqlClient.dll with stub/unix version
+bc-1  | [entrypoint] [3s] Created Win32 DLL symlinks → libwin32_stubs.so
+bc-1  | [entrypoint] [3s] Step 2 (service tier setup): 2s
+bc-1  | [entrypoint] [3s] Generating merged assemblies (first boot)...
+bc-1  | ======================================================================
+bc-1  | 
+bc-1  |   SKIP: netstandard-merged.dll not found
+bc-1  | 
+bc-1  | All merges complete.
+bc-1  | [entrypoint] [7s] Merged assemblies generated in 4s
+bc-1  | [entrypoint] [7s] Service tier already patched by this image (v1|platform=28.0.53445.0|image=97280-1786390733|config=45f0969c8d18) — skipping binary patch pass
+bc-1  | [entrypoint] [7s] Step 2b (patched assemblies): 4s
+bc-1  | [entrypoint] [7s] Waiting for SQL Server...
+bc-1  | [entrypoint] [10s] SQL Server ready after 10s of container uptime.
+bc-1  | [entrypoint] [11s] Restoring CRONUS database...
+bc-1  | [entrypoint] [11s] DB logical names: data='Navision_NAV_Data' log='Navision_NAV_Log'
+bc-1  | Processed 119056 pages for database 'CRONUS', file 'Navision_NAV_Data' on file 1.
+bc-1  | Processed 2 pages for database 'CRONUS', file 'Navision_NAV_Log' on file 1.
+bc-1  | RESTORE DATABASE successfully processed 119058 pages in 0.216 seconds (4306.188 MB/sec).
+bc-1  | [entrypoint] [13s] CRONUS restored.
+bc-1  | 
+bc-1  | (0 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | [entrypoint] [13s] License imported: Cronus.bclicense
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (0 rows affected)
+bc-1  | [entrypoint] [16s] SQL tuned for CI/CD (query store, stats, page verify, change tracking OFF)
+bc-1  | 
+bc-1  | (4 rows affected)
+bc-1  | 
+bc-1  | (4 rows affected)
+bc-1  | 
+bc-1  | (5 rows affected)
+bc-1  | [entrypoint] [16s] Cleared test framework global entries (will re-publish via dev endpoint)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | 
+bc-1  | (1 rows affected)
+bc-1  | [entrypoint] [17s] Database ready (BCRUNNER / Admin123!). Step 3 (DB setup): 7s
+bc-1  | [entrypoint] [17s] Verifying SQL connection...
+bc-1  | [entrypoint] [17s] SQL connection verified.
+bc-1  | [entrypoint] [17s] Config check:
+bc-1  |   <add key="DatabaseServer" value="sql"/>
+bc-1  |   <add key="DatabaseName" value="CRONUS"/>
+bc-1  |   <add key="DatabaseUserName" value="bctest"/>
+bc-1  |   <add key="ProtectedDatabasePassword" value="Test1234"/>
+bc-1  | [entrypoint] [17s] Pre-seeding R2R extension DLL cache...
+bc-1  | [entrypoint] [18s] Assembly cache persisted via /bc/assembly-cache (653M present)
+bc-1  | [entrypoint] [45s] R2R DLL cache seeded: 103 apps extracted, 34 skipped — caches: /usr/share/Microsoft/Microsoft Dynamics NAV/280/Server/MicrosoftDynamicsNavServer$MicrosoftDynamicsNavServer/apps/assembly/release/28.0.53445.0_1|/usr/share/Microsoft/Microsoft Dynamics NAV/280/Server/MicrosoftDynamicsNavServer$BC/apps/assembly/release/28.0.53445.0_1
+bc-1  | [entrypoint] [45s] Starting BC service tier...
+bc-1  | [entrypoint] [45s] Waiting for BC to start...
+bc-1  | [StartupHook] Initializing Linux compatibility patches...
+bc-1  | [StartupHook] Loaded Win32 stubs (kernel32/user32/advapi32/...)
+bc-1  | [StartupHook] Replaced OpenTelemetry.Exporter.Geneva.dll with stub (Geneva ETW exporter)
+bc-1  | [StartupHook] OpenTelemetry.Exporter.Geneva registered with stub resolver (version-agnostic)
+bc-1  | [StartupHook] Replaced Microsoft.Data.SqlClient.dll with stub (cross-platform SqlClient)
+bc-1  | [StartupHook] SqlClient verified: Microsoft.Data.SqlClient, Version=6.0.0.0, Culture=neutral, PublicKeyToken=23ec7fc2d6eaa4a5
+bc-1  | [StartupHook] System.Drawing.Common stub ready (already moved, via resolver)
+bc-1  | [StartupHook] System.Diagnostics.PerformanceCounter stub ready (already moved, via resolver)
+bc-1  | [StartupHook] Nav.Language.dll loaded — patching
+bc-1  | [StartupHook]   OnAppDomainAssemblyResolve precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   OnAppDomainAssemblyResolve compiled code via StubPrecode: 0x7FFF79057420
+bc-1  | [StartupHook] Patched OnAppDomainAssemblyResolve at 0x7FFF79599C50 -> 0x7FFF79142FE8
+bc-1  | [StartupHook] Patched OnAppDomainAssemblyResolve (code) at 0x7FFF79057420 -> 0x7FFF79142FE8
+bc-1  | [StartupHook]   ResolveSatelliteAssembly precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   ResolveSatelliteAssembly compiled code via StubPrecode: 0x7FFF79057DB0
+bc-1  | [StartupHook] Patched ResolveSatelliteAssembly at 0x7FFF79599C68 -> 0x7FFF79143000
+bc-1  | [StartupHook] Patched ResolveSatelliteAssembly (code) at 0x7FFF79057DB0 -> 0x7FFF79143000
+bc-1  | [StartupHook] Eagerly loaded Nav.Language.dll
+bc-1  | [StartupHook]   CecilDotNetTypeLoader.IsTypeForwardingCircular precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   CecilDotNetTypeLoader.IsTypeForwardingCircular compiled code via StubPrecode: 0x7FFF790581A0
+bc-1  | [StartupHook] Patched CecilDotNetTypeLoader.IsTypeForwardingCircular at 0x7FFF796C1158 -> 0x7FFF79142A48
+bc-1  | [StartupHook] Patched CecilDotNetTypeLoader.IsTypeForwardingCircular (code) at 0x7FFF790581A0 -> 0x7FFF79142A48
+bc-1  | [StartupHook] Eagerly loaded Nav.CodeAnalysis.dll (Cecil type forwarding)
+bc-1  | [StartupHook] CecilDotNetTypeLoader.IsTypeForwardingCircular already hooked — skipping re-apply
+bc-1  | [StartupHook]   Mono.Cecil.Mixin.CheckFileName precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   Mono.Cecil.Mixin.CheckFileName compiled code via StubPrecode: 0x7FFF790586C0
+bc-1  | [StartupHook] Patched Mono.Cecil.Mixin.CheckFileName at 0x7FFF796C3450 -> 0x7FFF79142A60
+bc-1  | [StartupHook] Patched Mono.Cecil.Mixin.CheckFileName (code) at 0x7FFF790586C0 -> 0x7FFF79142A60
+bc-1  | [StartupHook] Eagerly loaded Mono.Cecil (CheckFileName empty path fix)
+bc-1  | [StartupHook] Mono.Cecil.Mixin.CheckFileName already hooked — skipping re-apply
+bc-1  | [StartupHook] Patch #18: Searching for DynamicsNavServer...
+bc-1  | [StartupHook] Patch #18: Found DynamicsNavServer via Type.GetType
+bc-1  | [StartupHook] Nav.Ncl.dll loaded — patching
+bc-1  | [StartupHook] Nav.Types.dll loaded — patching
+bc-1  | [StartupHook] Replaced EventLogWriter with no-op proxy
+bc-1  | [StartupHook] Set encryption provider to pass-through (plain text passwords)
+bc-1  | [StartupHook]   NavAutomationHelper.GetGlobalAssemblyCacheDirectories precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavAutomationHelper.GetGlobalAssemblyCacheDirectories compiled code via StubPrecode: 0x7FFF7905C550
+bc-1  | [StartupHook] Patched NavAutomationHelper.GetGlobalAssemblyCacheDirectories at 0x7FFF79B3A5E0 -> 0x7FFF79142AC0
+bc-1  | [StartupHook] Patched NavAutomationHelper.GetGlobalAssemblyCacheDirectories (code) at 0x7FFF7905C550 -> 0x7FFF79142AC0
+bc-1  | [StartupHook] Patch #15a: GetGlobalAssemblyCacheDirectories → empty (no runtime dir probing)
+bc-1  | [StartupHook] GAC dirs hook test: 0 dirs returned (expect 0 if hook works)
+bc-1  | [StartupHook]   UserSettings.set_TimeZoneInfo (Patch #24) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   UserSettings.set_TimeZoneInfo (Patch #24) compiled code via StubPrecode: 0x7FFF7905CCF0
+bc-1  | [StartupHook] Patched UserSettings.set_TimeZoneInfo (Patch #24) at 0x7FFF79BF8438 -> 0x7FFF79142CB8
+bc-1  | [StartupHook] Patched UserSettings.set_TimeZoneInfo (Patch #24) (code) at 0x7FFF7905CCF0 -> 0x7FFF79142CB8
+bc-1  | [StartupHook]   NavEnvironment..cctor precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavEnvironment..cctor compiled code via StubPrecode: 0x7FFF7905D000
+bc-1  | [StartupHook] Patched NavEnvironment..cctor at 0x7FFF79BF9DB8 -> 0x7FFF791430C0
+bc-1  | [StartupHook] Patched NavEnvironment..cctor (code) at 0x7FFF7905D000 -> 0x7FFF791430C0
+bc-1  | [StartupHook]   NavEnvironment.get_ServiceAccount precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavEnvironment.get_ServiceAccount compiled code via StubPrecode: 0x7FFF7905D490
+bc-1  | [StartupHook] Patched NavEnvironment.get_ServiceAccount at 0x7FFF79BF9338 -> 0x7FFF791430D8
+bc-1  | [StartupHook] Patched NavEnvironment.get_ServiceAccount (code) at 0x7FFF7905D490 -> 0x7FFF791430D8
+bc-1  | [StartupHook]   NavEnvironment.get_ServiceAccountName precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavEnvironment.get_ServiceAccountName compiled code via StubPrecode: 0x7FFF7905D540
+bc-1  | [StartupHook] Patched NavEnvironment.get_ServiceAccountName at 0x7FFF79BF9350 -> 0x7FFF791430F0
+bc-1  | [StartupHook] Patched NavEnvironment.get_ServiceAccountName (code) at 0x7FFF7905D540 -> 0x7FFF791430F0
+bc-1  | [StartupHook]   NavEnvironment.EmitServerStartupTraceEvents precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavEnvironment.EmitServerStartupTraceEvents compiled code via StubPrecode: 0x7FFF7905D5B0
+bc-1  | [StartupHook] Patched NavEnvironment.EmitServerStartupTraceEvents at 0x7FFF79BF97D0 -> 0x7FFF79143048
+bc-1  | [StartupHook] Patched NavEnvironment.EmitServerStartupTraceEvents (code) at 0x7FFF7905D5B0 -> 0x7FFF79143048
+bc-1  | [StartupHook] Running NavEnvironment..cctor replacement
+bc-1  | [StartupHook]   Set lockObject = System.Object
+bc-1  | [StartupHook]   Set instanceId = 14beef95-8169-481d-aab7-c90a7ee90ccc
+bc-1  | [StartupHook]   Set serviceInstanceName = 
+bc-1  | [StartupHook]   Set serviceAccount = System.Security.Principal.WindowsIdentity
+bc-1  | [StartupHook]   Set compactLohGate = Microsoft.Dynamics.Nav.Runtime.ManualResetGate
+bc-1  | [StartupHook]   Cannot init TerminatedSessionsMetric (NavMetric0Dimensions): MissingMethodException: Cannot dynamically create an instance of type 'Microsoft.Dynamics.Nav.Diagnostic.NavMetric0Dimensions'. Reason: No parameterless constructor defined.
+bc-1  | [StartupHook]   Set defaultAwaitedShutdownConnectionTypesList = System.Collections.Generic.HashSet`1[Microsoft.Dynamics.Nav.Types.ConnectionType]
+bc-1  | [StartupHook]   Set defaultRestartNotificationConnectionTypesList = System.Collections.Generic.HashSet`1[Microsoft.Dynamics.Nav.Types.ConnectionType]
+bc-1  | [StartupHook] NavEnvironment..cctor replacement completed
+bc-1  | [StartupHook] Replaced Topology with Linux proxy (ACL bypass)
+bc-1  | [StartupHook] Patch #17: Found 2 ALSid overloads
+bc-1  | [StartupHook]   ALSid() -> String
+bc-1  | [StartupHook]   ALSid(String userName) -> String
+bc-1  | [StartupHook]   ALDatabase.ALSid(string) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   ALDatabase.ALSid(string) compiled code via StubPrecode: 0x7FFF7905EF20
+bc-1  | [StartupHook] Patched ALDatabase.ALSid(string) at 0x7FFF79ED2238 -> 0x7FFF79142C40
+bc-1  | [StartupHook] Patched ALDatabase.ALSid(string) (code) at 0x7FFF7905EF20 -> 0x7FFF79142C40
+bc-1  | [StartupHook] Patch #17: hooked 1 ALSid overload(s)
+bc-1  | [StartupHook]   NavUser.TryAuthenticate(NavUser,UserNameSecurityToken,NavTenant) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavUser.TryAuthenticate(NavUser,UserNameSecurityToken,NavTenant) compiled code via StubPrecode: 0x7FFF7905F6A0
+bc-1  | [StartupHook] Patched NavUser.TryAuthenticate(NavUser,UserNameSecurityToken,NavTenant) at 0x7FFF79F28888 -> 0x7FFF79142DD8
+bc-1  | [StartupHook] Patched NavUser.TryAuthenticate(NavUser,UserNameSecurityToken,NavTenant) (code) at 0x7FFF7905F6A0 -> 0x7FFF79142DD8
+bc-1  | [StartupHook] Patch #16b: NavUser.TryAuthenticate bypassed
+bc-1  | [StartupHook]   AzureADGraphQuery..ctor(NavSession) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   AzureADGraphQuery..ctor(NavSession) compiled code via StubPrecode: 0x7FFF79060200
+bc-1  | [StartupHook] Patched AzureADGraphQuery..ctor(NavSession) at 0x7FFF7A0A1E90 -> 0x7FFF79142E38
+bc-1  | [StartupHook] Patched AzureADGraphQuery..ctor(NavSession) (code) at 0x7FFF79060200 -> 0x7FFF79142E38
+bc-1  | [StartupHook] Patch #22: AzureADGraphQuery..ctor hooked — Azure AD credential init bypassed
+bc-1  | [StartupHook]   NavAppCompilationAssemblyLocator.GetLocationOfAssembliesLoadedInServerAppDomain precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavAppCompilationAssemblyLocator.GetLocationOfAssembliesLoadedInServerAppDomain compiled code via StubPrecode: 0x7FFF79060540
+bc-1  | [StartupHook] Patched NavAppCompilationAssemblyLocator.GetLocationOfAssembliesLoadedInServerAppDomain at 0x7FFF7A0A3510 -> 0x7FFF79142AA8
+bc-1  | [StartupHook] Patched NavAppCompilationAssemblyLocator.GetLocationOfAssembliesLoadedInServerAppDomain (code) at 0x7FFF79060540 -> 0x7FFF79142AA8
+bc-1  | [StartupHook]   NavDirectorySecurity.CreateSecurityForDomainDirectory (Patch #29) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavDirectorySecurity.CreateSecurityForDomainDirectory (Patch #29) compiled code via StubPrecode: 0x7FFF790645B0
+bc-1  | [StartupHook] Patched NavDirectorySecurity.CreateSecurityForDomainDirectory (Patch #29) at 0x7FFF7A0ABAE0 -> 0x7FFF79143078
+bc-1  | [StartupHook] Patched NavDirectorySecurity.CreateSecurityForDomainDirectory (Patch #29) (code) at 0x7FFF790645B0 -> 0x7FFF79143078
+bc-1  | [StartupHook] Patch #29: CreateSecurityForDomainDirectory returns null (Windows ACLs unavailable)
+bc-1  | [StartupHook]   BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Patch #25) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Patch #25) compiled code via StubPrecode: 0x7FFF79064810
+bc-1  | [StartupHook] Patched BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Patch #25) at 0x7FFF7A6D1920 -> 0x7FFF79142EE0
+bc-1  | [StartupHook] Patched BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Patch #25) (code) at 0x7FFF79064810 -> 0x7FFF79142EE0
+bc-1  | [StartupHook] Patch #25: attach-debug null-session NRE guarded
+bc-1  | [StartupHook]   NavClientHandle.Dispose (Patch #27) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavClientHandle.Dispose (Patch #27) compiled code via StubPrecode: 0x7FFF79065160
+bc-1  | [StartupHook] Patched NavClientHandle.Dispose (Patch #27) at 0x7FFF7A6D2238 -> 0x7FFF79142F10
+bc-1  | [StartupHook] Patched NavClientHandle.Dispose (Patch #27) (code) at 0x7FFF79065160 -> 0x7FFF79142F10
+bc-1  | [StartupHook] Patch #27: NavClientHandle.Dispose null-guarded
+bc-1  | [StartupHook]   NavFile.ExpandFileName (Patch #28) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NavFile.ExpandFileName (Patch #28) compiled code via StubPrecode: 0x7FFF79065BC0
+bc-1  | [StartupHook] Patched NavFile.ExpandFileName (Patch #28) at 0x7FFF7A6D2CE8 -> 0x7FFF79142F40
+bc-1  | [StartupHook] Patched NavFile.ExpandFileName (Patch #28) (code) at 0x7FFF79065BC0 -> 0x7FFF79142F40
+bc-1  | [StartupHook] Patch #28: NavFile.ExpandFileName backslash normalization active
+bc-1  | [StartupHook]   DynamicsNavServer.SetupSideServices precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   DynamicsNavServer.SetupSideServices compiled code via StubPrecode: 0x7FFF79066170
+bc-1  | [StartupHook] Patched DynamicsNavServer.SetupSideServices at 0x7FFF790E31F8 -> 0x7FFF79142C10
+bc-1  | [StartupHook] Patched DynamicsNavServer.SetupSideServices (code) at 0x7FFF79066170 -> 0x7FFF79142C10
+bc-1  | [StartupHook] Patch #18: SetupSideServices hooked (no-op on Linux)
+bc-1  | [StartupHook] Initialization complete.
+bc-1  | [BC-EventLog] Process was added into a job object.
+bc-1  | [StartupHook] Replaced encryption Instance + Factory
+bc-1  | [StartupHook] Re-applied encryption bypass (after Nav.Core load)
+bc-1  | [StartupHook] Re-applied Linux topology proxy (after Nav.Core load)
+bc-1  | [StartupHook] Encryption.Decrypt() called — bypass working
+bc-1  | [StartupHook]   NSServiceBase.FindClientTimeZone (Patch #24) precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   NSServiceBase.FindClientTimeZone (Patch #24) compiled code via StubPrecode: 0x7FFF7CC92D30
+bc-1  | [StartupHook] Patched NSServiceBase.FindClientTimeZone (Patch #24) at 0x7FFF7CBB9140 -> 0x7FFF79142B08
+bc-1  | [StartupHook] Patched NSServiceBase.FindClientTimeZone (Patch #24) (code) at 0x7FFF7CC92D30 -> 0x7FFF79142B08
+bc-1  | [StartupHook] Patch #18: SetupSideServices skipped (Linux — no Reporting Service)
+bc-1  | [StartupHook] Patch #19: CustomReportingServiceClient → no-op proxy
+bc-1  | [StartupHook] Patch #19: CustomReportingServiceClient → no-op proxy
+bc-1  | [StartupHook] Providing System.Diagnostics.PerformanceCounter stub via resolver
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | The service is initializing its configuration.
+bc-1  | [StartupHook] Removed 1 Watson crash handler(s)
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | Tenant: nav-systemapplication
+bc-1  | Environment Name: 
+bc-1  | Environment Type: Production
+bc-1  | A connection has been established.
+bc-1  | Tenant ID: nav-systemapplication
+bc-1  | Connection ID: 1
+bc-1  | SQL Server session ID: 65
+bc-1  | Database server: SQL
+bc-1  | Database name: CRONUS
+bc-1  | Database type: Application
+bc-1  | Elastic Pool Name: 
+bc-1  | SKU Name: 
+bc-1  | IsolationLevel: N/A
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | Tenant: 
+bc-1  | Environment Name: 
+bc-1  | Environment Type: 
+bc-1  | Object Change Listener is listening on SQL Server 'SQL' in Database 'CRONUS'.
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | The NAV application was mounted from database 'CRONUS' on database server 'SQL'.
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | Tenant: default
+bc-1  | Environment Name: 
+bc-1  | Environment Type: Sandbox
+bc-1  | A connection has been established.
+bc-1  | Tenant ID: default
+bc-1  | Connection ID: 2
+bc-1  | SQL Server session ID: 66
+bc-1  | Database server: SQL
+bc-1  | Database name: CRONUS
+bc-1  | Database type: Tenant
+bc-1  | Elastic Pool Name: 
+bc-1  | SKU Name: 
+bc-1  | IsolationLevel: N/A
+bc-1  | [StartupHook] AssemblyResolve attempt: Microsoft.Dynamics.Nav.AL.Common.XmlSerializers (from ?)
+bc-1  | [StartupHook]   TenantEncryptionProviderFactory.GetTenantEncryptionProvider precode: FF-25-FA-3F-00-00-4C-8B-15-FB-3F-00-00-FF-25-FD-3F-00-00-90-48-8B-05-F9
+bc-1  | [StartupHook]   TenantEncryptionProviderFactory.GetTenantEncryptionProvider compiled code via StubPrecode: 0x7FFF7F678AC0
+bc-1  | [StartupHook] Patched TenantEncryptionProviderFactory.GetTenantEncryptionProvider at 0x7FFF7F879FB0 -> 0x7FFF79142E80
+bc-1  | [StartupHook] Patched TenantEncryptionProviderFactory.GetTenantEncryptionProvider (code) at 0x7FFF7F678AC0 -> 0x7FFF79142E80
+bc-1  | [StartupHook] Patch #26: GetTenantEncryptionProvider hooked — AL encryption always "enabled", never real
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: EventSubscription
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): Unexpected event subscriber failure -- SubscriberType:CodeUnit; SubscriberId:935; TargetType:Report; TargetId:300; SubscriberCLRMethod:OnCarryOutReservationOtherDemandType; SubscriberALName:OnCarryOutReservationOtherDemandType; TargetMethod:OnCarryOutReservationOtherDemandType;
+bc-1  | RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  | CallerStackTrace:
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 000020D
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: Metadata
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: a495ada6-6ed6-46d8-919f-d817a4d335dd
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  | CallerStackTrace:
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 0000B1S
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: Metadata
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): Adding tenant aborted because of an extension failure -- Tenant: default
+bc-1  | RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  | CallerStackTrace:
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 000009Y
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: Tenant
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: a495ada6-6ed6-46d8-919f-d817a4d335dd
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  | CallerStackTrace:
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 00000V6
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: Tenant
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: a495ada6-6ed6-46d8-919f-d817a4d335dd
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  | CallerStackTrace:
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 00000Z7
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | Tenant: 
+bc-1  | Environment Name: 
+bc-1  | Environment Type: 
+bc-1  | The service MicrosoftDynamicsNavServer failed to start. This could be caused by a configuration error. Detailed error information: System.EntryPointNotFoundException: Entry point was not found.
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName).
+bc-1  | System.EntryPointNotFoundException: Entry point was not found.
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | [BC-EventLog] Server instance: BC
+bc-1  | Category: Runtime
+bc-1  | ClientSessionId: 00000000-0000-0000-0000-000000000000
+bc-1  | ClientActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerSessionUniqueId: 00000000-0000-0000-0000-000000000000
+bc-1  | ServerActivityId: 00000000-0000-0000-0000-000000000000
+bc-1  | EventTime: 08/12/2026 14:03:25
+bc-1  | Message (EntryPointNotFoundException): RootException: EntryPointNotFoundException (HResult: 0x80131523)
+bc-1  | ExceptionStackTrace:
+bc-1  |    at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |    at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | CallerStackTrace:
+bc-1  | 
+bc-1  | 
+bc-1  | 
+bc-1  | ProcessId: 435
+bc-1  | Tag: 00008NE
+bc-1  | ThreadId: 1
+bc-1  | ExecutionId: 2
+bc-1  | CounterInformation: 
+bc-1  | CustomParameters: {
+bc-1  | }
+bc-1  | GatewayCorrelationId: 
+bc-1  | [BC-EventLog] Server instance: MicrosoftDynamicsNavServer
+bc-1  | Tenant ID: 
+bc-1  | Environment Name: 
+bc-1  | Environment Type: 
+bc-1  | User: 
+bc-1  | Type: System.EntryPointNotFoundException
+bc-1  | Source: System.Collections.Concurrent
+bc-1  | HResult: -2146233053
+bc-1  | StackTrace:
+bc-1  |      at System.Collections.Concurrent.ConcurrentDictionary`2.TryGetValue(TKey key, TValue& value)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObjectInternal(ApplicationObjectId appObjectId, Boolean requireCompiled, NavCancellationToken cancellationToken, Int32 appGroupId)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.GetMetaApplicationObject(ApplicationObjectId appObjectId, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NCLMetadata.TryGetMetaApplicationObject(ApplicationObjectId appObjectId, NCLMetaApplicationObject& metaApplicationObject, Boolean requireCompiled, Int32 appGroupId)
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription.GetOriginalApplicationObject()
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscription..ctor(INavEventSubscriber subscriber, NavEventSubscriberMethodInfo subscriberMethodInfo, NavAppGroup subscriberNavAppGroup, NavEventSubscriptionModifiers subscriptionModifiers, Int32 memberId)
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromSubscriber(INavEventSubscriber subscriber, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers)
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.CreateEventSubscriptionsFromCodeunitIds(List`1 codeunitIds, NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionFactory.FindAndCreateSubscriptionInstances(NavAppGroup appGroup, NavEventSubscriptionModifiers subscriptionModifiers, NavDiagnostics diagnostics)
+bc-1  |      at Microsoft.Dynamics.Nav.EventSubscription.NavEventSubscriptionMetadata.InitializeAppGroupEvents(NavAppGroup appGroup, NavDiagnostics diagnostics)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.Apps.NavAppGroupUpdater.UpdateGroupForChangedTenant(NavTenant tenant, Boolean validateMetadata)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeAppsForTenant(NavTenant tenant)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.InitializeTenant(NavTenant tenant, NavTenantSettings tenantSettings, Boolean overwriteTenantIdInDatabase, Boolean verifyDatabaseConnection, Boolean ensureDatabaseExclusiveState)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddTenant(NavTenantMountingParameters mountingParameters)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.AddSingleLegacyTenant(String databaseServerName, String databaseName, String databaseUserName, ProtectedDatabasePassword databasePassword, EncryptionProvider encryptionProvider, AzureKeyVaultSettings azureKeyVaultSettings, NavDatabaseConnectionCredentialType databaseConnectionCredentialType, Boolean isInPlacePublishing)
+bc-1  |      at Microsoft.Dynamics.Nav.Runtime.NavTenantCollection.ConfigureTenants(ServerUserSettings settings, String encryptionKey, Boolean isInPlacePublishing)
+bc-1  |      at Microsoft.Dynamics.Nav.WindowsServices.NavServerWindowsService.Start(String commandLineServiceInstanceName)
+bc-1  |      at Microsoft.Dynamics.Nav.WindowsServices.DynamicsNavServer.Main(String[] args)
+bc-1  | 

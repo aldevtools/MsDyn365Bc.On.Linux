@@ -1,0 +1,147 @@
+ARCHIVED EXPERIMENT — DO NOT SUBMIT UPSTREAM.
+
+Prototype patch against FEX-Emu (built from source at the 2608 tag) that ports
+upstream's Windows-only "interrupt only at block entries" mitigation to Linux,
+env-gated behind FEX_PRECISE_ASYNC_SIGNALS so one binary is its own control.
+
+RESULT: it does not fix the bug. Minimal CoreCLR reproducer scored 0/10 with the
+knob off and 0/8 with it on, while tracing confirmed the mechanism fired (27
+deferrals, 57 deliveries in one run). Reason: classifying 32 SIGRTMIN arrivals
+in a failing run put only 11 (34%) in JIT code — 14 elsewhere in FEX host code,
+4 in a guest syscall, 3 in FEX's dispatcher. A block-entry gate covers a third,
+and one bad suspension corrupts the heap.
+
+Kept because the instrumentation approach (classifying signal arrival sites) is
+the reusable part and is what a real fix would need to start from. See
+docs/FEX-FIX-FEASIBILITY.md for the full analysis and code locations.
+
+NOT for upstream submission: FEX's CONTRIBUTING.md bans AI-generated code. The
+arrival-site distribution is the part with upstream value and a human should
+re-derive it independently.
+
+--- patch follows ---
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+index a39c9a1..2c02f05 100644
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -363,6 +363,18 @@ bool ContextImpl::InitCore() {
+     Config.NeedsPendingInterruptFaultCheck = true;
+   }
+ 
++#ifndef _WIN32
++  // PROTOTYPE: precise asynchronous signal delivery needs a pending-interrupt check emitted at block
++  // entries and loop back-edges so a deferred async signal can be delivered at a point where the
++  // reconstructed guest state is exact. See PreciseAsyncSignalsEnabled() in SignalDelegator.cpp.
++  {
++    const char* Env = getenv("FEX_PRECISE_ASYNC_SIGNALS");
++    if (Env && Env[0] != '0') {
++      Config.NeedsPendingInterruptFaultCheck = true;
++    }
++  }
++#endif
++
+   if constexpr (BLOCK_DEBUGGING) {
+     // If the developer wants to do any single-stepping points or watch points.
+     // Add them here.
+diff --git a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+index 6d6c899..a09936a 100644
+--- a/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
++++ b/Source/Tools/LinuxEmulation/LinuxSyscalls/SignalDelegator.cpp
+@@ -74,7 +74,20 @@ static uint64_t SigIsMember(GuestSAMask* Set, int Signal) {
+  * @name Signal frame setup
+  * @{ */
+ 
++static bool PreciseAsyncSignalsTrace();
++
+ void SignalDelegator::HandleSignal(FEX::HLE::ThreadStateObject* Thread, int Signal, void* Info, void* UContext) {
++  if (PreciseAsyncSignalsTrace() && Thread) {
++    char Buf[16] = {'~', 0};
++    int Len = 1;
++    int S = Signal;
++    if (S >= 10) {
++      Buf[Len++] = '0' + (S / 10);
++    }
++    Buf[Len++] = '0' + (S % 10);
++    Buf[Len++] = ' ';
++    write(2, Buf, Len);
++  }
+   // Let the host take first stab at handling the signal
+   if (!Thread) {
+     LogMan::Msg::AFmt("Thread {} has received a signal and hasn't registered itself with the delegate! Programming error!",
+@@ -547,6 +560,33 @@ static bool IsAsyncSignal(const siginfo_t* Info, int Signal) {
+   return true;
+ }
+ 
++// PROTOTYPE: When enabled, asynchronous signals that arrive while the thread is executing inside a
++// JIT code buffer are deferred until the JIT reaches the next pending-interrupt check, which is only
++// emitted at block entries and loop back-edges. This matches the WOW64 suspend design, where the
++// comment in Source/Windows/WOW64/Module.cpp states that "interrupts only happen at the start of
++// blocks, [so] the reconstructed state should be entirely accurate".
++//
++// Without this, an async signal is delivered at an arbitrary host PC in the middle of a translated
++// guest instruction, and the guest ucontext FEX synthesises holds a RIP reconstructed to the start of
++// that guest instruction while the SRA registers already hold partially-updated results. A guest that
++// rewrites RIP in that ucontext (CoreCLR activation injection, Go async preemption) then resumes from
++// state that never existed architecturally.
++static bool PreciseAsyncSignalsTrace() {
++  static const bool Enabled = [] {
++    const char* Env = getenv("FEX_PRECISE_ASYNC_SIGNALS_TRACE");
++    return Env && Env[0] != '0';
++  }();
++  return Enabled;
++}
++
++static bool PreciseAsyncSignalsEnabled() {
++  static const bool Enabled = [] {
++    const char* Env = getenv("FEX_PRECISE_ASYNC_SIGNALS");
++    return Env && Env[0] != '0';
++  }();
++  return Enabled;
++}
++
+ uint64_t SignalDelegator::GetNewSigMask(int Signal) const {
+   const SignalHandler& Handler = HostHandlers[Signal];
+   // Set up a new mask based on this signals signal mask
+@@ -595,6 +635,18 @@ void SignalDelegator::HandleGuestSignal(FEX::HLE::ThreadStateObject* ThreadObjec
+   auto SigInfo = *static_cast<siginfo_t*>(Info);
+ 
+   auto MustDeferSignal = (Thread->CurrentFrame->State.DeferredSignalRefCount.Load() != 0);
++  if (PreciseAsyncSignalsTrace() && Signal == 34) {
++    const uint64_t PC = ArchHelpers::Context::GetPc(UContext);
++    if (CTX->IsAddressInCodeBuffer(Thread, PC)) {
++      write(2, "~J ", 3);
++    } else if (IsAddressInDispatcher(PC)) {
++      write(2, "~Q ", 3);
++    } else if (Thread->CurrentFrame->InSyscallInfo != 0) {
++      write(2, "~S ", 3);
++    } else {
++      write(2, "~O ", 3);
++    }
++  }
+   if (Signal == SIGSEGV && SigInfo.si_code == SEGV_ACCERR && SigInfo.si_addr == reinterpret_cast<void*>(&Thread->InterruptFaultPage)) {
+     if (!MustDeferSignal) {
+       // We just reached the end of the outermost signal-deferring section and faulted to check for pending signals.
+@@ -608,6 +660,9 @@ void SignalDelegator::HandleGuestSignal(FEX::HLE::ThreadStateObject* ThreadObjec
+         return;
+       }
+ 
++      if (PreciseAsyncSignalsTrace()) {
++        write(2, "~P ", 3);
++      }
+       const auto& Top = ThreadObject->SignalInfo.DeferredSignalFrames.back();
+       Signal = Top.Signal;
+       SigInfo = Top.Info;
+@@ -636,7 +691,12 @@ void SignalDelegator::HandleGuestSignal(FEX::HLE::ThreadStateObject* ThreadObjec
+       ERROR_AND_DIE_FMT("X86 shouldn't hit this InterruptFaultPage");
+ #endif
+     }
+-  } else if (IsAsyncSignal(&SigInfo, Signal) && MustDeferSignal) {
++  } else if (const bool DeferForPrecision =
++               !MustDeferSignal && PreciseAsyncSignalsEnabled() && CTX->IsAddressInCodeBuffer(Thread, ArchHelpers::Context::GetPc(UContext));
++             IsAsyncSignal(&SigInfo, Signal) && (MustDeferSignal || DeferForPrecision)) {
++    if (DeferForPrecision && PreciseAsyncSignalsTrace()) {
++      write(2, "~D ", 3);
++    }
+     // If the signal is asynchronous (as determined by si_code) and FEX is in a state of needing
+     // to defer the signal, then add the signal to the thread's signal queue.
+     LOGMAN_THROW_A_FMT(ThreadObject->SignalInfo.DeferredSignalFrames.size() != ThreadObject->SignalInfo.DeferredSignalFrames.capacity(),
