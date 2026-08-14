@@ -39,10 +39,19 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  # The BASE images are always upstream's -- they are what we graft onto, and they
+  # are public, so any fork can pull them.
   BC_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest
-  BC_FEX: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest-fex
   SQL_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-zstd
-  SQL_FEX: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-fex
+  # The OUTPUT namespace follows whoever runs the workflow. A fork's GITHUB_TOKEN
+  # cannot write to upstream's GHCR namespace -- hardcoding it there means the
+  # build succeeds and then 403s on push, and every consumer of the fork is left
+  # pointing at tags that do not exist. `vars.FEX_IMAGE_OWNER` overrides it if you
+  # publish somewhere other than your own namespace.
+  #
+  # GHCR requires a LOWERCASE owner; github.repository_owner preserves the case
+  # you registered with (e.g. "SShadowS"), so it is lowercased at use.
+  IMAGE_OWNER: ${{ vars.FEX_IMAGE_OWNER || github.repository_owner }}
 
 jobs:
   build:
@@ -68,9 +77,20 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Resolve output tags
+        id: tags
+        run: |
+          set -euo pipefail
+          owner=$(printf '%s' "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')
+          echo "bc_fex=$REGISTRY/$owner/msdyn365bc.on.linux/bc-runner:latest-fex"  >> "$GITHUB_OUTPUT"
+          echo "sql_fex=$REGISTRY/$owner/msdyn365bc.on.linux/mssql:2022-fex"       >> "$GITHUB_OUTPUT"
+          echo "Publishing to the '$owner' namespace"
+
       - name: Build and push the FEX variants
         env:
           FEX_VERSION: ${{ inputs.fex_version || '2608~1-3~r' }}
+          BC_FEX: ${{ steps.tags.outputs.bc_fex }}
+          SQL_FEX: ${{ steps.tags.outputs.sql_fex }}
         run: |
           set -euo pipefail
           for pair in "$BC_BASE|$BC_FEX" "$SQL_BASE|$SQL_FEX"; do
@@ -93,6 +113,9 @@ jobs:
       # grafted image through FEX -- as uid 10001, because the mssql image runs as
       # that user with no HOME, which is its own documented failure mode.
       - name: Verify FEX actually executes x86-64 code in the pushed images
+        env:
+          BC_FEX: ${{ steps.tags.outputs.bc_fex }}
+          SQL_FEX: ${{ steps.tags.outputs.sql_fex }}
         run: |
           set -euo pipefail
           for img in "$BC_FEX" "$SQL_FEX"; do

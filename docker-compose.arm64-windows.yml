@@ -62,11 +62,13 @@ services:
     # exact-arithmetic / LIKE / transaction-rollback / collation checks. So the
     # published FEX-on-podman note that MSSQL crashes under FEX is wrong here,
     # while the equivalent claim for QEMU is exactly right.
-    # Published by .github/workflows/build-fex-images.yml, so a new user pulls
-    # rather than building. Build locally with:
+    # Published by .github/workflows/build-fex-images.yml into the namespace of
+    # whoever runs it -- which is THIS fork, because a fork's GITHUB_TOKEN cannot
+    # write to upstream's GHCR namespace. Override with BC_SQL_IMAGE to point at a
+    # different fork's build, or build locally with:
     #   docker build --platform linux/amd64 -f src/Dockerfile.fex-graft \
     #     --build-arg BASE_IMAGE=<stock image> -t <tag> src/
-    image: ${BC_SQL_IMAGE:-ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-fex}
+    image: ${BC_SQL_IMAGE:-ghcr.io/sshadows/msdyn365bc.on.linux/mssql:2022-fex}
     # The base compose leaves sql's platform unset (its image is amd64-only, so
     # it resolves to amd64 anyway). Stated explicitly so the emulation is visible
     # in the file rather than implied by the registry.
@@ -120,7 +122,7 @@ services:
     # this resolves to. Against a :latest-fex tag that is at least a *different*
     # name from the published one, but do not expect a built image to have FEX in
     # it -- src/Dockerfile does not graft. Use src/Dockerfile.fex-graft.
-    image: ${BC_RUNNER_IMAGE:-ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest-fex}
+    image: ${BC_RUNNER_IMAGE:-ghcr.io/sshadows/msdyn365bc.on.linux/bc-runner:latest-fex}
     # platform: linux/amd64 is already set in docker-compose.yml.
     ulimits:
       core: 0
