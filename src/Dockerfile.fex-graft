@@ -1,0 +1,86 @@
+# Graft FEX-Emu into an amd64 image so it can run on an arm64 Windows host under
+# Docker Desktop. Parameterized over the base image:
+#
+#   docker build --platform linux/amd64 -f Dockerfile.fex-graft \
+#     --build-arg BASE_IMAGE=ghcr.io/.../mssql:2022-zstd -t bc-arm64win/mssql-fex:2022 .
+#   docker build --platform linux/amd64 -f Dockerfile.fex-graft \
+#     --build-arg BASE_IMAGE=ghcr.io/.../bc-runner:latest -t bc-arm64win/bc-runner-fex:latest .
+#
+# Why bake FEX in rather than bind-mount it as docker-compose.arm64.yml does:
+# Docker Desktop's daemon lives in its own `docker-desktop` WSL2 distro, so a
+# host bind-mount source resolves in THAT filesystem -- not Windows, not another
+# WSL distro. This is ARM64.md's "self-contained variant of putting FEX in the
+# image", with the version pinned by PPA suite rather than a hand-picked deb URL.
+#
+# FEX is dynamically linked (verified in ARM64.md), and binfmt_misc's F flag pins
+# only the interpreter EXECUTABLE, not its libraries -- so the aarch64 loader and
+# every DT_NEEDED lib must exist inside this amd64 rootfs. Nothing collides:
+# aarch64 and x86-64 library paths are disjoint in a Debian-derived tree.
+#
+# Stage 1 is arm64 and runs natively. Stage 2 is amd64 but contains only COPY and
+# ENV, so building it on an arm64 host needs no emulation -- which matters,
+# because the emulator is the thing being installed.
+
+# Declared before the first FROM on purpose: an ARG is only visible to a FROM if
+# it is in the GLOBAL scope. Declared after stage 1 it belongs to that stage, and
+# the final FROM expands it to empty -- "base name should not be blank".
+ARG BASE_IMAGE
+
+# resolute = Ubuntu 26.04, the suite carrying fex-emu-armv8.4 2608~1-3~r: the same
+# build ARM64.md's measurements were taken on. armv8.4 is right for this CPU --
+# /proc/cpuinfo advertises both `atomics` (FEAT_LSE) and `uscat` (FEAT_LSE2), and
+# the microarch level determines how expensive FEX's x86 store-ordering emulation is.
+FROM --platform=linux/arm64 ubuntu:26.04 AS fexstage
+# Pinned rather than "whatever the PPA has today": FEX's x86 memory-model and
+# signal handling are exactly what this stack depends on, so a PPA bump must be a
+# deliberate, reviewable diff -- not something that silently rides along on the
+# next image rebuild and changes SQL Server's stability underneath you.
+# 2608~1-3~r is the build ARM64.md's measurements were taken on.
+ARG FEX_PACKAGE=fex-emu-armv8.4
+ARG FEX_VERSION=2608~1-3~r
+RUN set -eux; \
+    apt-get update -qq; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+        software-properties-common ca-certificates; \
+    add-apt-repository -y ppa:fex-emu/fex; \
+    apt-get update -qq; \
+    # Fail loudly if the pinned version is gone, rather than silently installing a
+    # different one: `apt-get install pkg=version` errors when the version is
+    # unavailable, which is the behaviour we want.
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${FEX_PACKAGE}=${FEX_VERSION}"; \
+    FEX --version 2>&1 | head -2 || true
+
+# Everything goes under /usr, never /lib. Both base images are merged-usr distros
+# where /lib is a SYMLINK to usr/lib, and BuildKit refuses to COPY a directory
+# over a symlink ("cannot copy to non-directory: .../lib"). Staging the loader at
+# /usr/lib/ld-linux-aarch64.so.1 makes FEX's PT_INTERP of
+# /lib/ld-linux-aarch64.so.1 resolve through that symlink.
+#
+# cp -L throughout: the loader and libc are symlinks in the source image, and a
+# dangling symlink in the destination fails at exec time with a message naming
+# neither FEX nor the missing link.
+RUN set -eux; \
+    mkdir -p /fexroot/usr/bin /fexroot/usr/lib/aarch64-linux-gnu; \
+    cp -L /usr/bin/FEX /usr/bin/FEXServer /fexroot/usr/bin/; \
+    cp -L /lib/ld-linux-aarch64.so.1 /fexroot/usr/lib/ld-linux-aarch64.so.1; \
+    for b in /usr/bin/FEX /usr/bin/FEXServer; do \
+        for l in $(ldd "$b" | awk '{print $3}' | grep '^/'); do \
+            cp -L "$l" /fexroot/usr/lib/aarch64-linux-gnu/; \
+        done; \
+    done; \
+    for d in /usr/share/fex-emu /usr/lib/fex-emu; do \
+        if [ -d "$d" ]; then mkdir -p "/fexroot$d"; cp -a "$d/." "/fexroot$d/"; fi; \
+    done; \
+    echo "--- staged ---"; find /fexroot -maxdepth 4 -type f | sort | head -30
+
+FROM --platform=linux/amd64 ${BASE_IMAGE}
+COPY --from=fexstage /fexroot/ /
+# FEX_ROOTFS=/ tells FEX to use this container's own x86-64 rootfs instead of
+# demanding a downloaded guest image -- an amd64 container's / already IS one.
+#
+# HOME is deliberately NOT set here. It is required for the mssql image (uid 10001
+# with no HOME, where FEX falls back to ./.config/fex-emu in an unwritable cwd and
+# dies with "Couldn't connect to FEXServer socket") and is supplied by the compose
+# overlay for that service only. Forcing HOME=/tmp on the bc image would move
+# root's HOME out from under BC's own tooling for no reason.
+ENV FEX_ROOTFS=/

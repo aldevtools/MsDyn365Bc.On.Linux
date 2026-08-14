@@ -16,6 +16,11 @@
 # Output is one CSV line per poll, so you can chart it or just tail it:
 #   ts,elapsed_s,sql_state,bc_state,sql_query_ms,bc_api_ms,bc_http,note
 set -uo pipefail
+# Disable history expansion: this script contains Passw0rd123!} and an interactive
+# or sourced shell expands `!}` as a history event ("bash: !}: event not found"),
+# which aborts the assignment and leaves every sqlcmd in here silently
+# unauthenticated -- observed as a bogus "no backup found".
+set +H
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 INTERVAL=60; HOURS=12; LOG=/tmp/arm64-soak-$(date +%Y%m%d-%H%M%S).csv
@@ -29,7 +34,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-COMPOSE="docker compose ${BC_COMPOSE_FILES:--f docker-compose.yml -f docker-compose.arm64.yml -f docker-compose.arm64-disk.yml -f docker-compose.arm64-goal.yml}"
+. "$(dirname "${BASH_SOURCE[0]}")/_arm64-compose.sh"
+COMPOSE="docker compose $(arm64_compose_files)"
 AUTH="${BC_SERVER_USERNAME:-BCRUNNER}:${BC_SERVER_PASSWORD:-Admin123!}"
 SA="${SA_PASSWORD:-Passw0rd123!}"
 DEADLINE=$(( $(date +%s) + HOURS * 3600 ))

@@ -13,6 +13,11 @@
 # scripts/arm64-recover.sh restores the newest one; if none exists it falls back
 # to BC's own restore from the artifact .bak.
 set -uo pipefail
+# Disable history expansion: this script contains Passw0rd123!} and an interactive
+# or sourced shell expands `!}` as a history event ("bash: !}: event not found"),
+# which aborts the assignment and leaves every sqlcmd in here silently
+# unauthenticated -- observed as a bogus "no backup found".
+set +H
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 INTERVAL=900; KEEP=6
 while [ $# -gt 0 ]; do
@@ -23,7 +28,8 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
-C="${BC_COMPOSE_FILES:--f docker-compose.yml -f docker-compose.arm64.yml -f docker-compose.arm64-disk.yml -f docker-compose.arm64-goal.yml}"
+. "$(dirname "${BASH_SOURCE[0]}")/_arm64-compose.sh"
+C=$(arm64_compose_files)
 SA="${SA_PASSWORD:-Passw0rd123!}"
 Q() { docker compose $C exec -T sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA" -C -No "$@"; }
 

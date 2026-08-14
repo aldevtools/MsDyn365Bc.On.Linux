@@ -1,0 +1,127 @@
+# arm64 Windows host (Snapdragon X Elite), amd64 containers, Docker Desktop/WSL2.
+#
+# The Windows sibling of docker-compose.arm64.yml. Two differences, both forced
+# by the platform rather than chosen:
+#
+#  1. NO FEX MOUNTS. docker-compose.arm64.yml bind-mounts /usr/bin/FEX and the
+#     aarch64 loader + 4 libs from the host, because FEX is dynamically linked
+#     and binfmt's F flag pins only the interpreter executable. That cannot work
+#     here: Docker Desktop's daemon runs inside its own `docker-desktop` WSL2
+#     distro, so a host path resolves in THAT filesystem, not in the Windows one
+#     and not in any other WSL distro. If FEX is wanted here it has to be baked
+#     into the image (ARM64.md's dpkg-deb -x variant) or staged on a Windows path.
+#
+#  2. THE EMULATOR IS QEMU, NOT FEX. Docker Desktop pre-registers
+#     /usr/bin/qemu-x86_64 with flags POCF (verified: cat
+#     /proc/sys/fs/binfmt_misc/x86_64). So every FEX_* knob in
+#     docker-compose.arm64-goal.yml is inert here -- including the two that
+#     ARM64-LESSONS.md records as load-bearing (FEX_VECTORTSOENABLED,
+#     FEX_MEMCPYSETTSOENABLED). Whether QEMU has an equivalent x86-store-ordering
+#     gap is the open question this overlay exists to measure; qemu-user's mttcg
+#     mode inserts barriers for the x86 memory model, which FEX does not do for
+#     vector/memcpy paths, so it is NOT safe to assume the same failure shape.
+#
+# The DOTNET_* mitigations DO carry over, because they are properties of CoreCLR
+# under any emulator, not of FEX -- see docker-compose.arm64-goal.yml for the
+# mechanism behind each. They are deliberately NOT set here: this overlay is the
+# baseline. Layer the goal overlay on top to add them, so the difference is
+# attributable.
+#
+# Usage -- SQL FIRST, it is the cheap half of the go/no-go:
+#   docker compose -f docker-compose.yml -f docker-compose.arm64-windows.yml up -d sql
+#   docker compose -f docker-compose.yml -f docker-compose.arm64-windows.yml up -d --wait
+services:
+  # Registers FEX as the kernel's x86-64 binfmt handler and disables Docker
+  # Desktop's QEMU one, then exits. sql and bc both gate on it completing.
+  #
+  # This exists so the user never has to know binfmt exists. The registration is
+  # kernel-global VM state and CANNOT be made to survive a VM restart (the
+  # docker-desktop distro's rootfs is managed), so a host reboot, `wsl --shutdown`
+  # or a Docker Desktop restart silently reverts x86-64 emulation to QEMU -- under
+  # which SQL Server segfaults instantly. Re-running on every `up` is the fix.
+  binfmt:
+    image: alpine:3.20
+    platform: linux/arm64      # native: this container must NOT need emulation
+    privileged: true           # binfmt_misc is not writable otherwise
+    network_mode: none
+    restart: "no"
+    volumes:
+      - ./scripts/arm64-register-binfmt.sh:/register.sh:ro
+    entrypoint: ["/bin/sh", "/register.sh"]
+
+  sql:
+    depends_on:
+      binfmt:
+        condition: service_completed_successfully
+    # FEX-grafted image, built by scratchpad Dockerfile.fex-graft from the stock
+    # mssql image. MEASURED 2026-08-13, and this is the finding that justifies the
+    # whole graft: under Docker Desktop's stock QEMU handler, SQL Server dies with
+    # `qemu: uncaught target signal 11 (Segmentation fault)` before it prints a
+    # single line of its own log -- deterministic, exit 139, 2/2 attempts. Under
+    # FEX the same image reports healthy in 22s and passes DDL / 20k-row DML /
+    # exact-arithmetic / LIKE / transaction-rollback / collation checks. So the
+    # published FEX-on-podman note that MSSQL crashes under FEX is wrong here,
+    # while the equivalent claim for QEMU is exactly right.
+    # Published by .github/workflows/build-fex-images.yml, so a new user pulls
+    # rather than building. Build locally with:
+    #   docker build --platform linux/amd64 -f src/Dockerfile.fex-graft \
+    #     --build-arg BASE_IMAGE=<stock image> -t <tag> src/
+    image: ${BC_SQL_IMAGE:-ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-fex}
+    # The base compose leaves sql's platform unset (its image is amd64-only, so
+    # it resolves to amd64 anyway). Stated explicitly so the emulation is visible
+    # in the file rather than implied by the registry.
+    platform: linux/amd64
+    environment:
+      # NOT optional, and not cosmetic. This image runs as uid 10001 with no HOME,
+      # so FEX falls back to ./.config/fex-emu in an unwritable cwd and dies with
+      # "Couldn't connect to FEXServer socket". Verified on Linux that HOME alone
+      # fixes it and XDG_CONFIG_HOME alone does not.
+      HOME: /tmp
+    # Disable SQL's healthcheck. This is a STABILITY setting here, not a tidiness
+    # one. The stock check (docker-compose.yml) runs sqlcmd every 5s from t=0, and
+    # under FEX every invocation is a whole new EMULATED guest process, racing
+    # SQLPAL's LSA/SAM init and sharing HOME=/tmp for the FEXServer handshake.
+    #
+    # Measured 2026-08-13/14 on this box:
+    #   healthcheck enabled  -> SQL aborted (exit 134) after 35.5 min
+    #   healthcheck disabled -> >20 h uptime, zero fatal errors
+    # (n=1 each, host slept during the long run, near-idle load — see
+    # docs/ARM64-WINDOWS.md. Not a clean 20h figure, but far outside the noise.)
+    #
+    # Nothing depended on it: docker-compose.yml gates bc on `service_started`,
+    # and docker-compose.arm64-goal.yml's bc healthcheck already does a real TDS
+    # roundtrip against SQL. scripts/arm64-windows-up.sh reads readiness from
+    # SQL's own log line instead, which costs no emulated process at all.
+    healthcheck:
+      disable: true
+    # Not about disk space. An emulated process reserves a very large virtual
+    # address space, and a core dump of it is what took the Linux host down on
+    # 2026-08-12 (apport reached ~20 GB resident and drove a 30 GB box into
+    # global OOM). WSL2 has no apport, so the blast radius here is the VM's disk
+    # rather than the desktop -- keep it anyway, the dump is worthless to us.
+    ulimits:
+      core: 0
+    # 8g + bc's 14g = 22g, inside the 24 GB .wslconfig gives the WSL2 VM. Sized
+    # so the VM itself never has to OOM-kill: a VM-level kill would look exactly
+    # like the emulation corruption this experiment is trying to measure.
+    mem_limit: 8g
+  bc:
+    depends_on:
+      binfmt:
+        condition: service_completed_successfully
+    # Same graft on the bc-runner image, published as a distinct TAG. Using a
+    # distinct tag (rather than retagging the grafted build over :latest locally)
+    # is what makes `docker compose pull` safe -- a local retag is silently undone
+    # by one pull, and the resulting failure is every amd64 binary dying with
+    # "permission denied" and nothing naming the cause.
+    #
+    # CAUTION: docker-compose.yml also declares `build:` for this service, so
+    # `docker compose build bc` builds the STOCK image and tags it with whatever
+    # this resolves to. Against a :latest-fex tag that is at least a *different*
+    # name from the published one, but do not expect a built image to have FEX in
+    # it -- src/Dockerfile does not graft. Use src/Dockerfile.fex-graft.
+    image: ${BC_RUNNER_IMAGE:-ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest-fex}
+    # platform: linux/amd64 is already set in docker-compose.yml.
+    ulimits:
+      core: 0
+    mem_limit: 14g

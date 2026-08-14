@@ -52,10 +52,16 @@ Just to start BC and run AL tests:
 Running on an Apple Silicon Mac (podman + Rosetta)? See [MacOS.md](MacOS.md)
 for the extra setup steps and the `docker-compose.macos.yml` overlay.
 
-On an **arm64 Linux** host (Ampere, Graviton, Snapdragon X, …) the images are
-x86-64 only and there is no supported path yet. [ARM64.md](ARM64.md) records
-what has been measured about closing that gap — it is an investigation, not a
-how-to.
+On **Windows on ARM** (Snapdragon X, …) there is a working path via Docker
+Desktop and FEX-Emu: `bash scripts/arm64-windows-up.sh` brings the whole stack
+up, and [docs/ARM64-WINDOWS.md](docs/ARM64-WINDOWS.md) is the how-to. BC boots in
+~150s with all apps and the web client; **SQL Server under emulation is the weak
+point** — it fails roughly one start in three and can die under load, so that doc
+also covers the backup/recover loop that makes it usable. Experimental.
+
+On an **arm64 Linux** host (Ampere, Graviton, …) the images are x86-64 only and
+there is no supported path yet. [ARM64.md](ARM64.md) records what has been
+measured about closing that gap — it is an investigation, not a how-to.
 
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and

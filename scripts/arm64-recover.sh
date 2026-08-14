@@ -14,8 +14,14 @@
 # original tmpfs data dir implied — persisting the data dir on disk is what
 # introduced the recovery step that hangs.
 set -uo pipefail
+# Disable history expansion: this script contains Passw0rd123!} and an interactive
+# or sourced shell expands `!}` as a history event ("bash: !}: event not found"),
+# which aborts the assignment and leaves every sqlcmd in here silently
+# unauthenticated -- observed as a bogus "no backup found".
+set +H
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
-C="${BC_COMPOSE_FILES:--f docker-compose.yml -f docker-compose.arm64.yml -f docker-compose.arm64-disk.yml -f docker-compose.arm64-goal.yml}"
+. "$(dirname "${BASH_SOURCE[0]}")/_arm64-compose.sh"
+C=$(arm64_compose_files)
 PROJECT=$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
 
 echo "[recover] stopping stack"

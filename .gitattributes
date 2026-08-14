@@ -1,0 +1,20 @@
+# Everything in this repo is consumed by Linux containers. A checkout on Windows
+# with core.autocrlf=true (Git for Windows' default) otherwise produces CRLF shell
+# scripts, which the image build COPYs in and bash then refuses:
+#   "bad interpreter: /usr/bin/env bash^M" / "$'\r': command not found"
+# The failure surfaces during the build or, worse, at container start, and names
+# nothing about line endings.
+* text=auto eol=lf
+
+# Binary: never touch these.
+*.app       binary
+*.dll       binary
+*.exe       binary
+*.so        binary
+*.bak       binary
+*.bclicense binary
+*.png       binary
+*.jpg       binary
+*.zip       binary
+*.nupkg     binary
+stubs/reporting-service-stub binary

@@ -1,0 +1,105 @@
+# FEX-grafted image variants for running this amd64 stack on an arm64 host.
+name: Build FEX image variants
+
+# Why these are SEPARATE TAGS rather than folded into bc-runner:latest and the
+# mssql mirror:
+#
+#  * src/Dockerfile would need `FROM --platform=linux/arm64` for the FEX stage.
+#    On an x86 host with no arm64 binfmt that stage FAILS TO BUILD, so every x86
+#    contributor running `docker compose build bc` locally would break, and
+#    build-image.yml would need QEMU on its main path.
+#  * mirror-sql-image.yml's value is byte-fidelity to upstream -- its digest
+#    comparison logic depends on the mirror being an exact copy. A grafted image
+#    is by definition not one.
+#  * FEX bumps on a different cadence than either the BC image or the SQL digest.
+#
+# Users never type these tags: docker-compose.arm64-windows.yml defaults to them,
+# and scripts/_arm64-compose.sh selects that overlay automatically on a Docker
+# Desktop / Windows host. See docs/ARM64-WINDOWS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fex_version:
+        description: FEX package version from ppa:fex-emu/fex (Ubuntu 26.04 "resolute" suite)
+        default: 2608~1-3~r
+      force:
+        description: Rebuild even if the tags already exist
+        type: boolean
+        default: false
+  push:
+    branches: [master]
+    paths:
+      - src/Dockerfile.fex-graft
+      - .github/workflows/build-fex-images.yml
+  # Rebuild after the base images move, so the variants do not drift behind them.
+  workflow_run:
+    workflows: ["Build and push bc-runner image", "Mirror SQL Server image to GHCR"]
+    types: [completed]
+
+env:
+  REGISTRY: ghcr.io
+  BC_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest
+  BC_FEX: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest-fex
+  SQL_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-zstd
+  SQL_FEX: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-fex
+
+jobs:
+  build:
+    # An ARM64 runner is what makes this cheap and emulation-free: the FEX stage
+    # is arm64 and runs NATIVE here, and the final stage is amd64 but contains
+    # only COPY/ENV, which buildx executes without running any amd64 code. On an
+    # x86 runner this same build would need QEMU for the arm64 stage.
+    # ubuntu-24.04-arm is free for public repos.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the FEX variants
+        env:
+          FEX_VERSION: ${{ inputs.fex_version || '2608~1-3~r' }}
+        run: |
+          set -euo pipefail
+          for pair in "$BC_BASE|$BC_FEX" "$SQL_BASE|$SQL_FEX"; do
+            base="${pair%%|*}"; out="${pair##*|}"
+            echo "::group::$out"
+            docker buildx build \
+              --platform linux/amd64 \
+              -f src/Dockerfile.fex-graft \
+              --build-arg BASE_IMAGE="$base" \
+              --build-arg FEX_VERSION="$FEX_VERSION" \
+              -t "$out" \
+              --push \
+              src/
+            echo "::endgroup::"
+          done
+
+      # Proving FEX is PRESENT is not the same as proving it WORKS, and the
+      # failure mode of a bad graft is silent until a user's SQL container dies
+      # with "permission denied" on exec. So run an actual x86-64 binary from the
+      # grafted image through FEX -- as uid 10001, because the mssql image runs as
+      # that user with no HOME, which is its own documented failure mode.
+      - name: Verify FEX actually executes x86-64 code in the pushed images
+        run: |
+          set -euo pipefail
+          for img in "$BC_FEX" "$SQL_FEX"; do
+            echo "--- $img ---"
+            out=$(docker run --rm --platform linux/amd64 --user 10001:10001 \
+                    -e FEX_ROOTFS=/ -e HOME=/tmp \
+                    --entrypoint /usr/bin/FEX "$img" /bin/echo fex-ok 2>&1 | tail -1)
+            [ "$out" = "fex-ok" ] || { echo "FEX did not run x86-64 code in $img: $out"; exit 1; }
+            echo "ok"
+          done

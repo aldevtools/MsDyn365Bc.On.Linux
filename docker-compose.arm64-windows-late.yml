@@ -1,0 +1,28 @@
+# Windows-only overrides that must land AFTER docker-compose.arm64-goal.yml.
+# scripts/_arm64-compose.sh appends this automatically on the Docker Desktop path.
+#
+# Only one setting, and it exists because the goal overlay's choice is actively
+# harmful in combination with the base compose's tmpfs data dir. MEASURED
+# 2026-08-13 on Windows/WSL2:
+#
+#   SQLPAL aborts -> `restart: on-failure:10` brings the container back -> the tmpfs
+#   at /var/opt/mssql/data is recreated EMPTY -> the restored CRONUS database and
+#   the bctest login are gone -> NST reports
+#       "Login failed for user 'bctest'. Could not find a login matching the name
+#        provided."
+#   ...which is an authentication error reported three restarts downstream of a
+#   SQLPAL crash that has already scrolled out of the log. It cost most of an
+#   afternoon to attribute.
+#
+# ARM64-LESSONS.md already records that `restart: on-failure` does not fix a HUNG
+# sqlservr and that recovery must RECREATE. What it does not record is that with a
+# tmpfs data dir the restart also destroys the database and misattributes the
+# failure. scripts/arm64-recover.sh is the correct response to a SQL death, and
+# scripts/arm64-backup.sh is what keeps the cost of one to a few minutes.
+#
+# Deliberately NOT applied on Linux: the goal overlay's author chose
+# `on-failure:10` explicitly to hold MTTR down, and that tradeoff was measured on
+# that host, not this one.
+services:
+  sql:
+    restart: "no"
