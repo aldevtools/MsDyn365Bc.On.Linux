@@ -52,7 +52,7 @@ and illegibly otherwise:
 | `docker compose` v2 | the stack needs `--wait` and per-service `platform:` |
 | VM page size == 4096 | x86-64 emulation assumes 4 KB pages |
 | CPU has `uscat` (FEAT_LSE2) | the published images bake `fex-emu-armv8.4`; without LSE2 it SIGILLs, which reads as a broken image rather than a CPU mismatch. Rebuild with `--build-arg FEX_PACKAGE=fex-emu-armv8.0` |
-| VM memory ≥ 22 GB | below the compose `mem_limit`s the VM OOM-kills a container, which looks exactly like emulation corruption |
+| VM memory ≥ 22 GB | the *sum* of the compose `mem_limit`s (sql 8g + bc 14g), so an overrunning container hits its own cgroup limit rather than the VM's OOM killer picking a victim — which is indistinguishable from emulation corruption. Arithmetic, **not** a measured minimum: lowering the `mem_limit`s to fit a smaller VM is equally valid |
 | ≥ 25 GB free in the VM | running out mid-restore fails inside SQL and reads as corruption |
 | FEX present in every amd64 image | with `POC` binfmt an image without it cannot exec at all |
 

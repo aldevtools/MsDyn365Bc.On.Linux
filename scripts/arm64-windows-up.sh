@@ -110,10 +110,16 @@ VM_GB=$(( ${VM_KB:-0} / 1048576 ))
 if [ "$VM_GB" -ge 22 ]; then
   ok "WSL2 VM memory ${VM_GB} GB"
 else
-  warn "WSL2 VM has ${VM_GB} GB but the compose limits total 22 GB."
-  warn "  Create %UserProfile%\\.wslconfig with:  [wsl2]  memory=24GB"
-  warn "  then 'wsl --shutdown' and restart Docker Desktop."
-  warn "  Without it a VM-level OOM kill is easily mistaken for emulation corruption."
+  warn "WSL2 VM has ${VM_GB} GB but the compose mem_limits total 22 GB (sql 8g + bc 14g)."
+  warn "  This is arithmetic, NOT a measured minimum -- BC's working set is well under"
+  warn "  14g, and nothing here has been tested in a smaller VM. What matters is that"
+  warn "  the VM be at least the SUM of the limits, so a container that overruns hits"
+  warn "  its OWN cgroup limit and dies attributably, instead of the VM's OOM killer"
+  warn "  picking a victim -- which is indistinguishable from the emulation corruption"
+  warn "  this stack is already prone to."
+  warn "  Either raise the VM:  %UserProfile%\\.wslconfig -> [wsl2] memory=24GB,"
+  warn "                        then 'wsl --shutdown' and restart Docker Desktop"
+  warn "  or lower the caps:    mem_limit in docker-compose.arm64-windows.yml"
 fi
 
 # ── 2. binfmt (idempotent, must re-run after every VM restart) ────────────────
