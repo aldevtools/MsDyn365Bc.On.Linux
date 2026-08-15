@@ -58,11 +58,54 @@ case "$ARCH" in
   *) die "daemon arch is $ARCH, not aarch64 — this script is for arm64 hosts" ;;
 esac
 
+# Compose v2: this repo uses `docker compose ... --wait` and per-service
+# `platform:`, neither of which docker-compose v1 or podman-compose support.
+docker compose version >/dev/null 2>&1 \
+  || die "'docker compose' (v2) not available — this stack needs the Compose v2 plugin"
+ok "compose v2 $(docker compose version --short 2>/dev/null)"
+
+# One probe container for the remaining VM-side facts, so this costs one
+# container start rather than four.
+PROBE=$(docker run --rm --platform linux/arm64 alpine:3.20 sh -c \
+  'printf "%s|%s|%s\n" "$(getconf PAGESIZE)" "$(awk "/MemTotal/{print \$2}" /proc/meminfo)" "$(grep -m1 Features /proc/cpuinfo | cut -d: -f2)"' 2>/dev/null)
+PAGESIZE=${PROBE%%|*}; REST=${PROBE#*|}; VM_KB=${REST%%|*}; CPUFLAGS=${REST#*|}
+
+# FEX emulates x86-64, which assumes 4 KB pages. A 16 KB-page kernel is a
+# different problem entirely and fails much later and far less legibly.
+if [ "${PAGESIZE:-0}" = 4096 ]; then
+  ok "4 KB page size"
+else
+  die "VM page size is ${PAGESIZE:-unknown}, not 4096 — x86-64 emulation requires 4 KB pages"
+fi
+
+# The published images bake fex-emu-armv8.4, which needs FEAT_LSE (atomics) and
+# FEAT_LSE2 (uscat). On a CPU without them that build faults with SIGILL, which
+# looks like a broken image rather than a CPU mismatch. Snapdragon X has both;
+# older Windows-on-ARM parts (SQ1/SQ2) do not.
+case "$CPUFLAGS" in
+  *uscat*) ok "CPU has FEAT_LSE2 (uscat) — matches the armv8.4 FEX build" ;;
+  *)
+    warn "CPU does not advertise 'uscat' (FEAT_LSE2), but the published images"
+    warn "  bake fex-emu-armv8.4. Expect SIGILL. Rebuild with a lower build:"
+    warn "    docker build --platform linux/amd64 -f src/Dockerfile.fex-graft \\"
+    warn "      --build-arg BASE_IMAGE=<stock image> --build-arg FEX_PACKAGE=fex-emu-armv8.0 \\"
+    warn "      --build-arg FEX_VERSION=<version> -t <tag> src/"
+    ;;
+esac
+
+# First boot pulls ~3 GB of images and downloads ~2 GB of BC artifacts into
+# volumes. Running out mid-restore fails inside SQL and reads as corruption.
+DISK_GB=$(docker run --rm --platform linux/arm64 alpine:3.20 sh -c 'df -Pk / | awk "NR==2{print int(\$4/1048576)}"' 2>/dev/null)
+if [ -n "$DISK_GB" ] && [ "$DISK_GB" -lt 25 ] 2>/dev/null; then
+  warn "only ${DISK_GB} GB free in the VM; first boot needs ~25 GB (images + artifacts + DB)"
+elif [ -n "$DISK_GB" ]; then
+  ok "${DISK_GB} GB free in the VM"
+fi
+
 # The compose mem_limits are 8g (sql) + 14g (bc). If the WSL2 VM is smaller than
 # their sum, the VM OOM-kills a container before its own cgroup limit applies --
 # and that looks exactly like the emulation corruption this stack is prone to,
 # which is a genuinely expensive confusion to debug.
-VM_KB=$(docker run --rm --platform linux/arm64 alpine:3.20 awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null)
 VM_GB=$(( ${VM_KB:-0} / 1048576 ))
 if [ "$VM_GB" -ge 22 ]; then
   ok "WSL2 VM memory ${VM_GB} GB"

@@ -43,6 +43,21 @@ First boot downloads ~2 GB of BC artifacts and restores the demo database; expec
 15-20 minutes. Subsequent boots reuse both and reach `Ready for extensions` in
 about 150 seconds.
 
+The script preflights before touching anything, because most of these fail late
+and illegibly otherwise:
+
+| check | why it matters |
+|---|---|
+| Docker daemon reachable, arch `aarch64` | wrong host entirely |
+| `docker compose` v2 | the stack needs `--wait` and per-service `platform:` |
+| VM page size == 4096 | x86-64 emulation assumes 4 KB pages |
+| CPU has `uscat` (FEAT_LSE2) | the published images bake `fex-emu-armv8.4`; without LSE2 it SIGILLs, which reads as a broken image rather than a CPU mismatch. Rebuild with `--build-arg FEX_PACKAGE=fex-emu-armv8.0` |
+| VM memory ≥ 22 GB | below the compose `mem_limit`s the VM OOM-kills a container, which looks exactly like emulation corruption |
+| ≥ 25 GB free in the VM | running out mid-restore fails inside SQL and reads as corruption |
+| FEX present in every amd64 image | with `POC` binfmt an image without it cannot exec at all |
+
+Memory and disk are warnings; the rest are hard stops.
+
 Then: web client on <http://localhost:8080>, dev endpoint 7049, OData 7048, API
 7052. Sign in as `BCRUNNER` / `Admin123!`.
 
