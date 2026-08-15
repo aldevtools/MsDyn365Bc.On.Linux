@@ -39,9 +39,17 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # The BASE images are always upstream's -- they are what we graft onto, and they
-  # are public, so any fork can pull them.
-  BC_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest
+  # The two bases are resolved differently ON PURPOSE.
+  #
+  # bc-runner carries THIS repo's src/Dockerfile, so a fork whose Dockerfile
+  # differs from upstream's must graft onto its OWN build or the FEX image
+  # silently ships upstream's code. Resolved with a fallback to upstream, so the
+  # workflow still works on a fork that has never run build-image.yml.
+  #
+  # The SQL mirror is a byte-for-byte copy of Microsoft's image with no
+  # fork-specific content, so upstream's is always correct and there is no reason
+  # to require a fork to run mirror-sql-image.yml first.
+  BC_BASE_UPSTREAM: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest
   SQL_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-zstd
   # The OUTPUT namespace follows whoever runs the workflow. A fork's GITHUB_TOKEN
   # cannot write to upstream's GHCR namespace -- hardcoding it there means the
@@ -77,18 +85,31 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Resolve output tags
+      - name: Resolve base and output tags
         id: tags
         run: |
           set -euo pipefail
           owner=$(printf '%s' "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')
+          own_bc="$REGISTRY/$owner/msdyn365bc.on.linux/bc-runner:latest"
+
+          # Prefer this fork's own bc-runner; fall back to upstream's if it has
+          # never been published here.
+          if docker buildx imagetools inspect "$own_bc" >/dev/null 2>&1; then
+            bc_base="$own_bc"
+          else
+            bc_base="$BC_BASE_UPSTREAM"
+            echo "::warning::$own_bc not found — grafting onto upstream's image, so this FEX build does NOT include any local src/Dockerfile changes. Run build-image.yml first."
+          fi
+
+          echo "bc_base=$bc_base"                                                 >> "$GITHUB_OUTPUT"
           echo "bc_fex=$REGISTRY/$owner/msdyn365bc.on.linux/bc-runner:latest-fex"  >> "$GITHUB_OUTPUT"
           echo "sql_fex=$REGISTRY/$owner/msdyn365bc.on.linux/mssql:2022-fex"       >> "$GITHUB_OUTPUT"
-          echo "Publishing to the '$owner' namespace"
+          echo "Publishing to '$owner'; bc base = $bc_base"
 
       - name: Build and push the FEX variants
         env:
           FEX_VERSION: ${{ inputs.fex_version || '2608~1-3~r' }}
+          BC_BASE: ${{ steps.tags.outputs.bc_base }}
           BC_FEX: ${{ steps.tags.outputs.bc_fex }}
           SQL_FEX: ${{ steps.tags.outputs.sql_fex }}
         run: |
