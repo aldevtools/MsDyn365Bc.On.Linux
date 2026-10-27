@@ -26,9 +26,7 @@ using System.Linq;
 ///    same conversion runs on it first (issue #185).
 ///  * Patch #28 (StartupHook) no longer creates the parent folder of every path AL touches: a
 ///    File.Exists on a missing folder made the folder, and a DotNet Directory.Delete then found it
-///    again (issue #185). The folder is created where AL writes: NavFile.ALCreate, the target of
-///    ALCopy and ALRename, CreateTempFileName and InternalUpload call
-///    <c>ExpandFileNameCreatingParent</c> instead of ExpandFileName.
+///    again (issue #185). A write does not make the folder either (issue #189).
 ///  * MediaSet.ImportFile takes the file name with Path.GetFileName, which on Linux only splits
 ///    at '/', so "TEMP\name.jpg" was stored as the name. Windows splits at both. The calls in
 ///    NavMediaSet go through <c>FileNameAtEitherSeparator</c>.
@@ -43,9 +41,6 @@ static class PatchTempPath
     const string ArgumentHelper = "NewDotNetPathArgument";
     const string FileNameHelper = "FileNameAtEitherSeparator";
     const string ResultHelper = "NewDotNetPathResult";
-    const string ParentHelper = "ExpandFileNameCreatingParent";
-    static readonly string[] WriterMethods = { "ALCreate", "CreateTempFileName", "InternalUpload" };
-    static readonly string[] TargetMethods = { "ALCopy", "ALRename" };
     static readonly string[] TextTypes = { "NavStringValue" };
 
     public static int Run(string inputPath, string outputPath)
@@ -137,38 +132,6 @@ static class PatchTempPath
                 results++;
             }
 
-            var navFile = module.GetTypes().Where(t => OuterName(t) == "NavFile").ToList();
-            var expand = navFile.SelectMany(t => t.Methods).FirstOrDefault(m => m.Name == "ExpandFileName" && m.HasBody && m.Parameters.Count == 3);
-            if (expand == null)
-            {
-                Console.WriteLine("ERROR: NavFile.ExpandFileName not found; the parent folder fix cannot be applied");
-                return 1;
-            }
-            int writers = 0, alreadyWriters = 0;
-            MethodDefinition? parentHelper = null;
-            foreach (var type in navFile)
-                foreach (var method in type.Methods.Where(m => m.HasBody))
-                {
-                    bool writer = WriterMethods.Contains(method.Name), target = TargetMethods.Contains(method.Name);
-                    if (!writer && !target) continue;
-                    var body = method.Body.Instructions;
-                    bool grown = false;
-                    for (int i = 0; i < body.Count; i++)
-                    {
-                        if (body[i].OpCode.Code != Code.Call || body[i].Operand is not MethodReference mr) continue;
-                        if (mr.Name == ParentHelper) { alreadyWriters++; continue; }
-                        if (mr.Name != "ExpandFileName" || OuterName(mr.DeclaringType.Resolve() ?? type) != "NavFile") continue;
-                        // ALCopy(from, to) and ALRename(old, new): only the call on the second
-                        // argument names the file that is written.
-                        if (target && !(i >= 2 && body[i - 2].OpCode.Code == Code.Ldarg_2)) continue;
-                        parentHelper ??= AddParentHelper(module, expand);
-                        body[i].Operand = parentHelper;
-                        writers++;
-                        grown = true;
-                    }
-                    if (grown) IlHelpers.LengthenShortBranches(method.Body);
-                }
-
             var mediaSet = module.GetTypes().Where(t => OuterName(t) == "NavMediaSet").ToList();
             foreach (var type in mediaSet)
                 foreach (var method in type.Methods.Where(m => m.HasBody))
@@ -188,14 +151,14 @@ static class PatchTempPath
                     if (grown) IlHelpers.LengthenShortBranches(method.Body);
                 }
 
-            Console.WriteLine($"Patched {arguments} DotNet text argument(s), {rawStrings} raw string conversion, {results} DotNet result conversion, {writers} NavFile write call(s) and {fileNames} MediaSet GetFileName call(s) in {Path.GetFileName(inputPath)} "
-                + $"(already patched: {alreadyArguments}, {alreadyRaw}, {alreadyResults}, {alreadyWriters} and {alreadyFileNames})");
-            if (arguments + alreadyArguments == 0 || fileNames + alreadyFileNames == 0 || writers + alreadyWriters == 0)
+            Console.WriteLine($"Patched {arguments} DotNet text argument(s), {rawStrings} raw string conversion, {results} DotNet result conversion and {fileNames} MediaSet GetFileName call(s) in {Path.GetFileName(inputPath)} "
+                + $"(already patched: {alreadyArguments}, {alreadyRaw}, {alreadyResults} and {alreadyFileNames})");
+            if (arguments + alreadyArguments == 0 || fileNames + alreadyFileNames == 0)
             {
                 Console.WriteLine("ERROR: a place to patch was not found; BC moved the code and the temp path fix is not applied");
                 return 1;
             }
-            if (arguments + rawStrings + fileNames + results + writers == 0) return 0;
+            if (arguments + rawStrings + fileNames + results == 0) return 0;
             if (inputPath == outputPath) assembly.Write(); else assembly.Write(outputPath);
             return 0;
         }
@@ -378,79 +341,6 @@ static class PatchTempPath
         il.Append(il.Create(OpCodes.Call, concat));
         il.Append(il.Create(OpCodes.Ret));
         il.Append(unchanged);
-        il.Append(il.Create(OpCodes.Ret));
-        return m;
-    }
-
-    /// <summary>
-    /// static string ExpandFileNameCreatingParent(DataError e, string name, bool b): ExpandFileName,
-    /// then the folder the file goes in is created when the path is under the session's user folder.
-    /// </summary>
-    static MethodDefinition AddParentHelper(ModuleDefinition module, MethodDefinition expand)
-    {
-        var holder = Holder(module);
-        var existing = holder.Methods.FirstOrDefault(m => m.Name == ParentHelper);
-        if (existing != null) return existing;
-
-        var currentThread = module.GetTypes().First(t => t.FullName == "Microsoft.Dynamics.Nav.Runtime.NavCurrentThread");
-        var session = module.GetTypes().First(t => t.FullName == "Microsoft.Dynamics.Nav.Runtime.NavSession");
-        var getSession = module.ImportReference(currentThread.Methods.First(m => m.Name == "get_Session"));
-        var getUserFolder = module.ImportReference(session.Methods.First(m => m.Name == "get_UserFolder"));
-        var isNullOrEmpty = module.ImportReference(typeof(string).GetMethod("IsNullOrEmpty", new[] { typeof(string) }));
-        var startsWith = module.ImportReference(typeof(string).GetMethod("StartsWith", new[] { typeof(string), typeof(StringComparison) }));
-        var getDirectoryName = module.ImportReference(typeof(Path).GetMethod("GetDirectoryName", new[] { typeof(string) }));
-        var directoryExists = module.ImportReference(typeof(Directory).GetMethod("Exists", new[] { typeof(string) }));
-        var createDirectory = module.ImportReference(typeof(Directory).GetMethod("CreateDirectory", new[] { typeof(string) }));
-
-        var m = new MethodDefinition(ParentHelper,
-            MethodAttributes.Static | MethodAttributes.Assembly | MethodAttributes.HideBySig, module.TypeSystem.String);
-        m.Parameters.Add(new ParameterDefinition("errorLevel", ParameterAttributes.None, expand.Parameters[0].ParameterType));
-        m.Parameters.Add(new ParameterDefinition("fileName", ParameterAttributes.None, module.TypeSystem.String));
-        m.Parameters.Add(new ParameterDefinition("enforceUserPath", ParameterAttributes.None, module.TypeSystem.Boolean));
-        holder.Methods.Add(m);
-        m.Body.InitLocals = true;
-        m.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));          // 0: expanded
-        m.Body.Variables.Add(new VariableDefinition(module.ImportReference(session)));  // 1: session
-        m.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));          // 2: user folder
-        m.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));          // 3: directory
-
-        var il = m.Body.GetILProcessor();
-        var end = il.Create(OpCodes.Ldloc_0);
-        il.Append(il.Create(OpCodes.Ldarg_0));
-        il.Append(il.Create(OpCodes.Ldarg_1));
-        il.Append(il.Create(OpCodes.Ldarg_2));
-        il.Append(il.Create(OpCodes.Call, expand));
-        il.Append(il.Create(OpCodes.Stloc_0));
-        il.Append(il.Create(OpCodes.Ldloc_0));
-        il.Append(il.Create(OpCodes.Brfalse, end));
-        il.Append(il.Create(OpCodes.Call, getSession));
-        il.Append(il.Create(OpCodes.Stloc_1));
-        il.Append(il.Create(OpCodes.Ldloc_1));
-        il.Append(il.Create(OpCodes.Brfalse, end));
-        il.Append(il.Create(OpCodes.Ldloc_1));
-        il.Append(il.Create(OpCodes.Callvirt, getUserFolder));
-        il.Append(il.Create(OpCodes.Stloc_2));
-        il.Append(il.Create(OpCodes.Ldloc_2));
-        il.Append(il.Create(OpCodes.Call, isNullOrEmpty));
-        il.Append(il.Create(OpCodes.Brtrue, end));
-        il.Append(il.Create(OpCodes.Ldloc_0));
-        il.Append(il.Create(OpCodes.Ldloc_2));
-        il.Append(il.Create(OpCodes.Ldc_I4_4)); // StringComparison.Ordinal
-        il.Append(il.Create(OpCodes.Callvirt, startsWith));
-        il.Append(il.Create(OpCodes.Brfalse, end));
-        il.Append(il.Create(OpCodes.Ldloc_0));
-        il.Append(il.Create(OpCodes.Call, getDirectoryName));
-        il.Append(il.Create(OpCodes.Stloc_3));
-        il.Append(il.Create(OpCodes.Ldloc_3));
-        il.Append(il.Create(OpCodes.Call, isNullOrEmpty));
-        il.Append(il.Create(OpCodes.Brtrue, end));
-        il.Append(il.Create(OpCodes.Ldloc_3));
-        il.Append(il.Create(OpCodes.Call, directoryExists));
-        il.Append(il.Create(OpCodes.Brtrue, end));
-        il.Append(il.Create(OpCodes.Ldloc_3));
-        il.Append(il.Create(OpCodes.Call, createDirectory));
-        il.Append(il.Create(OpCodes.Pop));
-        il.Append(end);
         il.Append(il.Create(OpCodes.Ret));
         return m;
     }

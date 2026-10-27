@@ -11,9 +11,8 @@
 // methods of Directory and DirectoryInfo are routed through BcLinuxFileListing (the filelisting
 // patch) to do the same.
 //
-// Issue #185: Directory.Exists(Path + '/') and the folder AL makes only when it writes. These three
-// cases are not measured on a Windows container yet; whether Windows itself creates the folder on a
-// write is open.
+// Issue #185: Directory.Exists(Path + '/') and a read-only call that must not make a folder.
+// Issue #189: a write into a missing folder fails like Windows and does not make the folder.
 //
 // Expected values are what Windows BC 27.5, 28.5 and 29.0 containers reported.
 dotnet
@@ -34,6 +33,7 @@ codeunit 70075 "BC Linux Temp Folder IO"
 
     var
         LibraryAssert: Codeunit "Library Assert";
+        MissingPathTxt: Label 'Could not find a part of the path ''%1''.', Locked = true;
         ImportedTxt: Label 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', Locked = true;
 
     [Test]
@@ -41,12 +41,14 @@ codeunit 70075 "BC Linux Temp Folder IO"
     var
         Folder: Text;
         Dir: DotNet BcLinuxDirectoryInfo;
+        Directory: DotNet BcLinuxDirectory;
         Files: DotNet Array;
         Found: DotNet BcLinuxFileInfo;
         i: Integer;
         Names: Text;
     begin
         Folder := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Directory.CreateDirectory(Folder);
         WriteFile(Folder + '\a.xml');
         WriteFile(Folder + '\b.XML');
         WriteFile(Folder + '\c.xml');
@@ -75,6 +77,7 @@ codeunit 70075 "BC Linux Temp Folder IO"
         Files: DotNet Array;
     begin
         Folder := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Directory.CreateDirectory(Folder);
         WriteFile(Folder + '\c.xml');
         WriteFile(Folder + '\B.xml');
         WriteFile(Folder + '\a.XML');
@@ -99,6 +102,8 @@ codeunit 70075 "BC Linux Temp Folder IO"
         Files: DotNet Array;
     begin
         Folder := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Directory.CreateDirectory(Folder + '\sub1\deeper');
+        Directory.CreateDirectory(Folder + '\sub2');
         WriteFile(Folder + '\z.xml');
         WriteFile(Folder + '\a.xml');
         WriteFile(Folder + '\sub2\a.xml');
@@ -181,25 +186,63 @@ codeunit 70075 "BC Linux Temp Folder IO"
         LibraryAssert.IsTrue(Directory.Exists(TemporaryPath()), 'TemporaryPath() exists');
     end;
 
-    // The folder is still made where AL writes: create, the target of copy and rename.
+    // Issue #189: Windows BC 27.5, 28.5 and 29.0 do not make a missing folder when AL writes into
+    // it. File.Create fails with .NET's text, naming the path as AL passed it, and the folder is
+    // not made.
     [Test]
-    procedure WritingCreatesTheFolder()
+    procedure FileCreateIntoAMissingFolderFails()
+    var
+        Directory: DotNet BcLinuxDirectory;
+        OutFile: File;
+        Parent: Text;
+        Target: Text;
+    begin
+        Parent := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Target := Parent + '\a.txt';
+
+        asserterror OutFile.Create(Target);
+
+        LibraryAssert.AreEqual(StrSubstNo(MissingPathTxt, Target), GetLastErrorText(), 'File.Create error text');
+        LibraryAssert.AreEqual('InvalidPath', GetLastErrorCode(), 'File.Create error code');
+        LibraryAssert.IsFalse(Directory.Exists(Parent), 'File.Create made the folder');
+
+        // Control: the same call directly in TemporaryPath() works.
+        WriteFile(TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-') + '.txt');
+    end;
+
+    [Test]
+    procedure ReportSaveAsPdfIntoAMissingFolderFails()
+    var
+        Directory: DotNet BcLinuxDirectory;
+        Parent: Text;
+        Target: Text;
+    begin
+        Parent := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Target := Parent + '\x.pdf';
+
+        asserterror Report.SaveAsPdf(Report::"BC Linux Pdf Sections", Target);
+
+        LibraryAssert.AreEqual(StrSubstNo(MissingPathTxt, Target), GetLastErrorText(), 'SaveAsPdf error text');
+        LibraryAssert.AreEqual('InvalidPath', GetLastErrorCode(), 'SaveAsPdf error code');
+        LibraryAssert.IsFalse(Directory.Exists(Parent), 'SaveAsPdf made the folder');
+    end;
+
+    // A folder that exists is written into, and a file can be copied and renamed inside it.
+    [Test]
+    procedure WritingIntoAnExistingFolderWorks()
     var
         Directory: DotNet BcLinuxDirectory;
         Parent: Text;
     begin
         Parent := TemporaryPath() + 'bclinux-io-' + DelChr(Format(CreateGuid()), '=', '{}-');
+        Directory.CreateDirectory(Parent);
 
-        WriteFile(Parent + '\created\a.xml');
-        LibraryAssert.IsTrue(Directory.Exists(Parent + '\created'), 'File.Create made the folder');
-
-        File.Copy(Parent + '\created\a.xml', Parent + '\copied\b.xml');
-        LibraryAssert.IsTrue(Directory.Exists(Parent + '\copied'), 'File.Copy made the target folder');
-        LibraryAssert.IsTrue(File.Exists(Parent + '\copied\b.xml'), 'copied file exists');
-
-        File.Rename(Parent + '\copied\b.xml', Parent + '\renamed\c.xml');
-        LibraryAssert.IsTrue(Directory.Exists(Parent + '\renamed'), 'File.Rename made the target folder');
-        LibraryAssert.IsTrue(File.Exists(Parent + '\renamed\c.xml'), 'renamed file exists');
+        WriteFile(Parent + '\a.xml');
+        File.Copy(Parent + '\a.xml', Parent + '\b.xml');
+        LibraryAssert.IsTrue(File.Exists(Parent + '\b.xml'), 'copied file exists');
+        File.Rename(Parent + '\b.xml', Parent + '\c.xml');
+        LibraryAssert.IsTrue(File.Exists(Parent + '\c.xml'), 'renamed file exists');
+        LibraryAssert.IsFalse(File.Exists(Parent + '\b.xml'), 'renamed source is gone');
 
         Directory.Delete(Parent, true);
     end;

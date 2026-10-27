@@ -4224,6 +4224,10 @@ internal class StartupHook
 
     private static PropertyInfo? _sessionUserFolderProp;   // NavSession.UserFolder
     private static bool _expandFileNameLockdownLogged;
+    // Issue #189: expanded path -> the text AL passed, for the error text of a failed file call.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _expandedFrom = new();
+    private static FieldInfo? _exceptionMessageField;
+    private const string MissingPathPrefix = "Could not find a part of the path '";
 
     private static void PatchNavFileExpandFileName(Assembly navNcl)
     {
@@ -4268,6 +4272,8 @@ internal class StartupHook
                 nameof(Replacement_NavFileExpandFileName),
                 BindingFlags.Static | BindingFlags.NonPublic)!;
             ApplyJmpHook(expand, replacement, "NavFile.ExpandFileName (Patch #28)");
+            _exceptionMessageField = typeof(Exception).GetField("_message", BindingFlags.Instance | BindingFlags.NonPublic);
+            AppDomain.CurrentDomain.FirstChanceException += RewriteMissingPathMessage;
             Console.WriteLine("[StartupHook] Patch #28: NavFile.ExpandFileName backslash normalization active");
         }
         catch (Exception ex)
@@ -4289,6 +4295,7 @@ internal class StartupHook
     private static string Replacement_NavFileExpandFileName(int errorLevel, string fileName, bool enforceUserPath)
     {
         if (string.IsNullOrEmpty(fileName)) return fileName;
+        var originalName = fileName;
         fileName = fileName.Replace('\\', '/');
         try
         {
@@ -4306,15 +4313,19 @@ internal class StartupHook
             if (!System.IO.Path.IsPathRooted(fileName) && userFolder != null)
                 fileName = System.IO.Path.Combine(userFolder, fileName);
             fileName = System.IO.Path.GetFullPath(fileName);
+            if (!string.Equals(originalName, fileName, StringComparison.Ordinal))
+            {
+                if (_expandedFrom.Count > 512) _expandedFrom.Clear();
+                _expandedFrom[fileName] = originalName;
+            }
 
             // BC builds user-folder subpaths with '\' too (GetUserTempFolder combines
             // "TEMP\\"), so pre-#28 the "directories" were literal backslash-named files
             // and nothing ever created them as real directories. The user's TEMP folder
-            // always exists on a Windows tier, so it is made here. Any deeper folder is made
-            // only where AL writes (ALCreate, the target of ALCopy/ALRename, temp files,
-            // upload: ExpandFileNameCreatingParent, from the temppath patch, issue #185).
-            // Creating a parent for every path made File.Exists on a missing folder
-            // create the folder.
+            // always exists on a Windows tier, so it is made here. No deeper folder is made: a
+            // write into a missing folder fails as on Windows, with the path as AL passed it in
+            // the text (RewriteMissingPathMessage, issue #189), and creating a parent for every
+            // path made File.Exists on a missing folder create the folder (issue #185).
             if (userFolder != null
                 && fileName.StartsWith(userFolder, StringComparison.OrdinalIgnoreCase))
             {
@@ -4335,6 +4346,26 @@ internal class StartupHook
             // let the real file operation surface the error with its usual mapping.
         }
         return fileName;
+    }
+
+    /// <summary>
+    /// Windows names the path as AL passed it in "Could not find a part of the path '...'." (issue
+    /// #189); here .NET names the path after Patch #28 normalized it. The text is rewritten when the
+    /// exception is thrown, before BC reads it. Only paths Patch #28 expanded are touched.
+    /// </summary>
+    private static void RewriteMissingPathMessage(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+    {
+        try
+        {
+            if (e.Exception is not DirectoryNotFoundException || _exceptionMessageField == null) return;
+            var message = e.Exception.Message;
+            if (!message.StartsWith(MissingPathPrefix, StringComparison.Ordinal) || !message.EndsWith("'.", StringComparison.Ordinal))
+                return;
+            var path = message.Substring(MissingPathPrefix.Length, message.Length - MissingPathPrefix.Length - 2);
+            if (_expandedFrom.TryGetValue(path, out var passed))
+                _exceptionMessageField.SetValue(e.Exception, MissingPathPrefix + passed + "'.");
+        }
+        catch { /* never let the rewrite throw */ }
     }
 
     // ========================================================================
