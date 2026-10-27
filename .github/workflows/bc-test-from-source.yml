@@ -649,10 +649,20 @@ jobs:
         run: |
           set -e
           [ -n "$REGISTRY_PASSWORD" ] || { echo "::error::registry_username needs the registry_password secret"; exit 1; }
+          [ -n "$SQL_IMAGE" ] || { echo "::error::registry_username needs an sql_image to log in for"; exit 1; }
+          # The first path segment is a registry host only if it has a dot, a
+          # port or is localhost; otherwise the image is on Docker Hub
+          # (mssql:2022, org/img:tag).
+          first="${SQL_IMAGE%%/*}"
+          if [ "$first" != "$SQL_IMAGE" ] && { [[ "$first" == *.* ]] || [[ "$first" == *:* ]] || [ "$first" = localhost ]; }; then
+            registry="$first"
+          else
+            registry=docker.io
+          fi
           export DOCKER_CONFIG="$RUNNER_TEMP/docker-config"
           mkdir -p "$DOCKER_CONFIG"
           echo "DOCKER_CONFIG=$DOCKER_CONFIG" >> "$GITHUB_ENV"
-          echo "$REGISTRY_PASSWORD" | docker login "${SQL_IMAGE%%/*}" -u "$REGISTRY_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry" -u "$REGISTRY_USERNAME" --password-stdin
 
       - name: Download BC artifacts + pull docker images (parallel)
         env:
@@ -701,12 +711,7 @@ jobs:
         env:
           DATABASE_BAK: ${{ inputs.database_bak }}
         run: |
-          # The released bc-runner image predates BC_DATABASE_BAK: use this
-          # checkout's entrypoint until an image with it is released.
-          printf 'services:\n  bc:\n    volumes:\n      - ./scripts/entrypoint.sh:/bc/scripts/entrypoint.sh:ro\n' \
-            > bc-linux/prebuilt.override.yml
           {
-            echo "COMPOSE_FILE=docker-compose.yml:prebuilt.override.yml"
             echo "BC_DATABASE_BAK=$DATABASE_BAK"
             echo "BC_CLEAR_ALL_APPS=none"
             echo "BC_SKIP_APP_PUBLISH=true"
@@ -1381,7 +1386,7 @@ jobs:
         working-directory: bc-linux
         run: |
           mkdir -p ../database
-          docker compose exec -T sql bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -No -b -Q "BACKUP DATABASE [CRONUS] TO DISK=N'"'"'/var/opt/mssql/data/database.bak'"'"' WITH COPY_ONLY, COMPRESSION, INIT"'
+          docker compose exec -T -e DB="${BC_DATABASE:-CRONUS}" sql bash -c '/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -No -b -Q "BACKUP DATABASE [$DB] TO DISK=N'"'"'/var/opt/mssql/data/database.bak'"'"' WITH COPY_ONLY, COMPRESSION, INIT"'
           # tmpfs: docker cp cannot read it, stream the file instead
           docker compose exec -T sql cat /var/opt/mssql/data/database.bak > ../database/database.bak
           docker compose exec -T sql rm -f /var/opt/mssql/data/database.bak
