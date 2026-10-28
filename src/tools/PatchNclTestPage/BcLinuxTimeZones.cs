@@ -195,3 +195,27 @@ internal static class BcLinuxTimeZones
         };
     }
 }
+
+/// <summary>
+/// The zone BC loads a user's stored time zone id into (NavSession.GetPersonalization's
+/// TryFindSystemTimeZoneById, rewritten by the "culture" patch). BC serializes that zone with
+/// ToSerializedString through an inlined UserSettings setter, out of reach of Patch #24's hook,
+/// and FromSerializedString cannot read a zone with DST rules back on Linux: every sign-in after
+/// a DST zone was stored died in NSService.OpenConnection. A zone with adjustment rules becomes a
+/// custom zone with the same id and names and the current offset, which is what Patch #24 does.
+/// The id has to stay: the "Time Zone" table only lists Windows ids.
+///
+/// Same copy rules as BcLinuxTimeZones above; no try/catch, so it can't test the round-trip and
+/// wraps every zone that has rules (zones without rules, UTC and Etc/GMT±N, round-trip).
+/// </summary>
+internal static class BcLinuxTimeZoneLookup
+{
+    internal static bool TryFindSystemTimeZoneById(string id, out TimeZoneInfo timeZone)
+    {
+        if (!TimeZoneInfo.TryFindSystemTimeZoneById(id, out timeZone))
+            return false;
+        if (timeZone.GetAdjustmentRules().Length != 0)
+            timeZone = TimeZoneInfo.CreateCustomTimeZone(timeZone.Id, timeZone.GetUtcOffset(DateTime.UtcNow), timeZone.DisplayName, timeZone.StandardName);
+        return true;
+    }
+}

@@ -9,4 +9,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The Windows time zone list, shared as source with the patcher (W6b). -->
+    <Compile Include="../tools/PatchNclTestPage/BcLinuxTimeZones.cs" Link="BcLinuxTimeZones.cs" />
+  </ItemGroup>
+
 </Project>

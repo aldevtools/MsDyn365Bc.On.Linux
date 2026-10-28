@@ -111,10 +111,19 @@ internal class StartupHook
     // request with ToSerializedString — which FromSerializedString cannot
     // parse back on Linux for most ICU zones (dotnet/runtime quirk), so
     // login dies with InvalidTimeZoneException in NSService.OpenConnection.
-    // Fix: do the same base-offset matching, but return a custom
-    // TimeZoneInfo (system zone's id/names, current UTC offset) — custom
-    // zones round-trip reliably. Wall-clock times are correct; the only
-    // drift is across a DST transition mid-session.
+    // Fix: do the same matching Windows does, over the Windows zones (the
+    // list the "Time Zone" table holds, issue #132, linked in from
+    // BcLinuxTimeZones.cs), and return a custom TimeZoneInfo with the Windows
+    // id and display name and the current UTC offset — custom zones
+    // round-trip reliably. The id must be a Windows id: the NST persists it
+    // in [User Personalization] and My Settings looks it up in that table
+    // ("'Time Zone' does not exist. =<>" otherwise). Wall-clock times are
+    // correct; the only drift is across a DST transition mid-session.
+    // The browser only reports offsets, so several Windows zones match one
+    // browser (+60 with EU DST: W. Europe, Central Europe, Romance, Central
+    // European). Windows takes the first in its own order (offset, then
+    // display name), whose DST start/end also match: 'W. Europe Standard
+    // Time' for Europe/Zurich and Europe/Paris alike. We do the same.
     // DetectTimeZone is large (LINQ + lambdas) so the JMP hook cannot be
     // bypassed by JIT inlining.
     // ------------------------------------------------------------------
@@ -138,9 +147,15 @@ internal class StartupHook
     {
         try
         {
-            // Browser reports the base offset and (separately) DST info. Compute
-            // the offset in effect right now, then map it to a round-trip-safe
-            // zone whose id stays safe after the NST persists and re-resolves it.
+            var windows = DetectWindowsTimeZone(clientTimeZoneOffset, dstOffset, dstPeriodStart, dstPeriodEnd, uiSession);
+            if (windows != null)
+            {
+                Console.Error.WriteLine($"[WebClientHook] Browser time zone (base {clientTimeZoneOffset}min, dst {dstOffset}min) → '{windows.Id}' (offset {windows.BaseUtcOffset})");
+                return windows;
+            }
+
+            // Last resort, no Windows zone resolved on this host: the offset in
+            // effect right now as a round-trip-safe zone.
             var baseOffset = TimeSpan.FromMinutes(clientTimeZoneOffset);
             bool dstActive = dstOffset != 0 && dstPeriodStart != DateTime.MinValue && dstPeriodEnd != DateTime.MinValue &&
                 IsWithinDstPeriod(DateTime.UtcNow + baseOffset, dstPeriodStart, dstPeriodEnd);
@@ -155,6 +170,87 @@ internal class StartupHook
             Console.Error.WriteLine($"[WebClientHook] DetectTimeZone replacement failed ({ex.GetType().Name}: {ex.Message}) — using UTC");
             return TimeZoneInfo.Utc;
         }
+    }
+
+    // Microsoft's TimeZoneHelper.DetectTimeZone (Framework.UI.WebBase), run
+    // over the Windows zones instead of GetSystemTimeZones(), which is the
+    // IANA list on Linux. Each Windows id is resolved to its real rules (.NET
+    // maps it to IANA through ICU) for the matching; 5 of the 144 don't
+    // resolve on Linux and are skipped.
+    private static TimeZoneInfo? DetectWindowsTimeZone(int clientTimeZoneOffset, int dstOffset,
+        DateTime dstPeriodStart, DateTime dstPeriodEnd, object uiSession)
+    {
+        var zones = WindowsZones();
+        if (zones.Length == 0) return null;
+        int year = DateTime.UtcNow.Year;
+        int bestGuessTimeZoneOffset = int.MaxValue;
+        (TimeZoneInfo Rules, TimeZoneInfo Windows)? bestGuess = null;
+
+        bool Matches((TimeZoneInfo Rules, TimeZoneInfo Windows) z, int offset)
+        {
+            if ((int)z.Rules.BaseUtcOffset.TotalMinutes != offset) return false;
+            bestGuess ??= z;
+            int dst = Math.Abs((int)(z.Rules.GetUtcOffset(new DateTime(year, 1, 1)).TotalMinutes - z.Rules.GetUtcOffset(new DateTime(year, 6, 1)).TotalMinutes));
+            if (dstOffset != dst) return false;
+            bestGuess = z;
+            return ValidateDstStart(z.Rules, dstPeriodStart, dstPeriodEnd, year) && ValidateDstEnd(z.Rules, dstPeriodStart, dstPeriodEnd, year);
+        }
+
+        var match = zones.FirstOrDefault(z =>
+        {
+            int diff = (int)z.Rules.BaseUtcOffset.TotalMinutes - clientTimeZoneOffset;
+            if (Math.Abs(bestGuessTimeZoneOffset) > Math.Abs(diff)) bestGuessTimeZoneOffset = diff;
+            return Matches(z, clientTimeZoneOffset);
+        });
+        if (match.Rules == null)
+        {
+            try { uiSession?.GetType().GetProperty("ShowTimeZoneWarning")?.SetValue(uiSession, true); } catch { }
+            if (bestGuess == null)
+                match = zones.FirstOrDefault(z => Matches(z, clientTimeZoneOffset + bestGuessTimeZoneOffset));
+            if (match.Rules == null && bestGuess != null)
+                match = bestGuess.Value;
+        }
+        if (match.Rules == null) return null;
+
+        var offsetNow = match.Rules.GetUtcOffset(DateTime.UtcNow);
+        return TimeZoneInfo.CreateCustomTimeZone(match.Windows.Id, offsetNow, match.Windows.DisplayName, match.Rules.StandardName);
+    }
+
+    private static bool ValidateDstStart(TimeZoneInfo tz, DateTime start, DateTime end, int year)
+    {
+        if (start == DateTime.MinValue)
+        {
+            if (end == DateTime.MinValue)
+                return tz.GetUtcOffset(new DateTime(year, 1, 1)) == tz.GetUtcOffset(new DateTime(year, 6, 1));
+            return tz.GetUtcOffset(start) == tz.GetUtcOffset(start.AddSeconds(1.0));
+        }
+        return tz.GetUtcOffset(start) < tz.GetUtcOffset(start.AddSeconds(1.0));
+    }
+
+    private static bool ValidateDstEnd(TimeZoneInfo tz, DateTime start, DateTime end, int year)
+    {
+        if (end == DateTime.MinValue)
+        {
+            if (start == DateTime.MinValue)
+                return tz.GetUtcOffset(new DateTime(year, 1, 1)) == tz.GetUtcOffset(new DateTime(year, 6, 1));
+            return tz.GetUtcOffset(end) == tz.GetUtcOffset(end.AddSeconds(1.0));
+        }
+        return tz.GetUtcOffset(end) > tz.GetUtcOffset(end.AddSeconds(1.0));
+    }
+
+    private static (TimeZoneInfo Rules, TimeZoneInfo Windows)[]? _windowsZones;
+
+    // Windows' order (BaseUtcOffset, then display name), which decides ties.
+    private static (TimeZoneInfo Rules, TimeZoneInfo Windows)[] WindowsZones()
+    {
+        if (_windowsZones != null) return _windowsZones;
+        var list = new System.Collections.Generic.List<(TimeZoneInfo, TimeZoneInfo)>();
+        foreach (var windows in BcLinuxTimeZones.WindowsTimeZones())
+        {
+            try { list.Add((TimeZoneInfo.FindSystemTimeZoneById(windows.Id), windows)); }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { }
+        }
+        return _windowsZones = list.ToArray();
     }
 
     private static bool IsWithinDstPeriod(DateTime local, DateTime start, DateTime end)
@@ -173,7 +269,9 @@ internal class StartupHook
     // any user whose browser is not in UTC cannot log in
     // (InvalidTimeZoneException in NSService.OpenConnection).
     // Fix: return a custom TimeZoneInfo with the same id/names and the
-    // CURRENT utc offset — custom zones round-trip reliably. Wall-clock
+    // CURRENT utc offset — custom zones round-trip reliably. The id is kept,
+    // not replaced by an Etc/GMT one: BC looks it up in the "Time Zone"
+    // table, which only lists Windows ids (#132). Wall-clock
     // times are correct for the session; the only drift is across a DST
     // transition mid-session, which is acceptable for a dev tool.
     // This getter is called through the ITimeZoneProvider interface, so the
@@ -216,27 +314,29 @@ internal class StartupHook
         }
     }
 
+    // Mirrors StartupHook.MakeTimeZoneSerializationSafe on the NST side —
+    // keep them in sync: same id and names, current offset, no DST rules.
     private static TimeZoneInfo MakeSerializationSafe(TimeZoneInfo tz)
     {
-        try
-        {
-            TimeZoneInfo.FromSerializedString(tz.ToSerializedString());
-            return tz; // already safe (UTC, Etc/GMT±N, synthetic custom zones)
-        }
-        catch
-        {
-            var safe = ZoneForOffset(tz.GetUtcOffset(DateTime.UtcNow));
-            Console.Error.WriteLine($"[WebClientHook] TimeZone '{tz.Id}' does not survive .NET serialization on Linux — using '{safe.Id}'");
-            return safe;
-        }
+        if (RoundTrips(tz))
+            return tz;
+        var safe = TimeZoneInfo.CreateCustomTimeZone(tz.Id, tz.GetUtcOffset(DateTime.UtcNow), tz.DisplayName, tz.StandardName);
+        if (!RoundTrips(safe))
+            safe = ZoneForOffset(safe.BaseUtcOffset);
+        Console.Error.WriteLine($"[WebClientHook] TimeZone '{tz.Id}' does not survive .NET serialization on Linux — using '{safe.Id}' with fixed offset {safe.BaseUtcOffset}");
+        return safe;
+    }
+
+    private static bool RoundTrips(TimeZoneInfo tz)
+    {
+        try { TimeZoneInfo.FromSerializedString(tz.ToSerializedString()); return true; }
+        catch { return false; }
     }
 
     /// <summary>
-    /// Map a UTC offset to a zone that (a) survives ToSerializedString →
-    /// FromSerializedString on Linux and (b) stays safe after the NST persists
-    /// its id and re-resolves it on the next login. Whole-hour offsets use the
-    /// real "Etc/GMT±N" IANA zones; sub-hour offsets use a synthetic
-    /// "UTC±HH:MM" id that won't re-resolve to a DST-bearing ICU zone.
+    /// Last resort only: a zone for a UTC offset that survives the round-trip,
+    /// "Etc/GMT±N" for whole hours, synthetic "UTC±HH:MM" otherwise. Neither id
+    /// is in the "Time Zone" table, so My Settings cannot show it.
     /// Mirrors StartupHook.ZoneForOffset on the NST side — keep them in sync.
     /// </summary>
     private static TimeZoneInfo ZoneForOffset(TimeSpan offset)

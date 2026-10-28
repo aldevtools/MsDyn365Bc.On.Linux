@@ -1041,12 +1041,29 @@ through that pair — so anyone whose browser is in a DST zone couldn't sign
 in, and the CRONUS demo DB's `Europe/Amsterdam` personalization row broke
 even UTC browsers. The fix spans three places that must stay in sync:
 StartupHook **Patch #24** (`NSServiceBase.FindClientTimeZone` +
-`UserSettings.set_TimeZoneInfo`) and WebClientHook **W6/W6b** both route
-zones through a `ZoneForOffset` helper that emits `Etc/GMT±N` (whole-hour,
-re-resolvable) or synthetic `UTC±HH:MM` (sub-hour) ids; the entrypoint
+`UserSettings.set_TimeZoneInfo`) and WebClientHook **W6** replace a zone that
+does not survive the round-trip with a custom zone that keeps its **id** and
+names and drops only the DST rules (fixed current offset); the entrypoint
 normalizes `[User Personalization].[Time Zone]` to `UTC` before NST starts.
-If you touch one `ZoneForOffset`, update the other — they're duplicated
-across the two hook assemblies on purpose (no shared assembly).
+**W6b** (`DetectTimeZone`) runs Microsoft's own browser-offset matching over
+the 144 Windows zones (`BcLinuxTimeZones.cs`, compiled into WebClientHook as a
+linked source file), so a Europe/Zurich browser gets `W. Europe Standard Time`
+as on Windows. **The id has to be a Windows id**: since issue #132 the "Time
+Zone" table lists only those, and My Settings resolves the stored id through
+it. Both hooks used to emit `Etc/GMT±N` / `UTC±HH:MM` ids, which made My
+Settings fail with "The Time Zone does not exist. =<>" for every browser
+outside UTC; `extensions/smoke-test` codeunit 70041 guards the session and
+user zone. **Keeping the id needs a third piece:** on the next sign-in
+`NavSession.GetPersonalization` re-resolves the stored id with
+`TryFindSystemTimeZoneById` (a DST zone again) and stores it through
+`UserSettings.set_TimeZoneInfo`, which the JIT inlines there, so Patch #24's
+hook never runs and `OpenConnection` dies deserializing it. The `culture`
+patch rewrites that call to `BcLinuxTimeZoneLookup` (in `BcLinuxTimeZones.cs`),
+which returns the same id as a fixed-offset custom zone. The old `Etc/GMT±N`
+ids hid this because they re-resolve to zones without DST rules. `ZoneForOffset` (the old ids) is only the last resort now. The
+`MakeSerializationSafe` / `ZoneForOffset` pair is duplicated across the two
+hook assemblies on purpose (no shared assembly) — if you touch one, update
+the other.
 
 ## Two .NET runtimes in one image (BC 27/28 = net8.0, BC 29 = net10.0)
 

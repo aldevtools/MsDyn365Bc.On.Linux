@@ -150,7 +150,7 @@ browser ──HTTP/WS (/csh, JSON-RPC)──▶ Prod.Client.WebCoreApp (Kestrel,
 | W3 | `Microsoft.Dynamics.Nav.Types.EventLogWriter` | The embedded Nav client runtime's background event queue calls `System.Diagnostics.EventLog` and aborts the process | Replace static writer instance with a `DispatchProxy` no-op (same as NST Patch #4; JMP unreliable here due to inlining) |
 | W4 | `Microsoft.Dynamics.Framework.UI.Web.FileHelper.GetSymbolicLinkTarget` | P/Invokes kernel32 `CreateFile`/`GetFinalPathNameByHandle` just to resolve symlinks for a `FileSystemWatcher` | Managed reimplementation via `FileInfo.ResolveLinkTarget` |
 | W5 | (all assemblies) | Any other Win32 P/Invoke | `ResolvingUnmanagedDll` → `libwin32_stubs.so`, mirroring NST Patch #3 |
-| W6 / W6b | `ConfigurationTimeZoneProvider.get_TimeZone`, `TimeZoneHelper.DetectTimeZone` | The browser's time zone is sent to the NST and serialized with `TimeZoneInfo.ToSerializedString`, which fails to deserialize on Linux for DST zones (see Time zone bug below) | Emit a round-trip-safe zone (`Etc/GMT±N` for whole-hour offsets, synthetic `UTC±HH:MM` for sub-hour) instead of an ICU zone |
+| W6 / W6b | `ConfigurationTimeZoneProvider.get_TimeZone`, `TimeZoneHelper.DetectTimeZone` | The browser's time zone is sent to the NST and serialized with `TimeZoneInfo.ToSerializedString`, which fails to deserialize on Linux for DST zones (see Time zone bug below) | W6: same id and names, current offset, no DST rules. W6b: match the browser's offsets against the 144 Windows zones as Windows does and emit that Windows id, fixed offset |
 
 ### The time zone bug (most important fix for real users)
 
@@ -163,27 +163,38 @@ client loaded. The CRONUS demo DB also ships
 `[User Personalization].[Time Zone] = 'Europe/Amsterdam'`, which broke even a
 UTC browser on the very first login.
 
-It took three coordinated changes because the zone flows through both processes
+It took four coordinated changes because the zone flows through both processes
 and gets **persisted and re-resolved** on each login:
 
-1. **Web client (W6b)** maps the browser's reported offset to a round-trip-safe
-   id (`Etc/GMT±N` / synthetic `UTC±HH:MM`) before it's sent to the NST.
+1. **Web client (W6b)** maps the browser's reported offsets to a Windows zone
+   with Microsoft's own matching (`TimeZoneHelper.DetectTimeZone`), run over the
+   144 Windows zones instead of the ICU list, and sends it as a custom zone with
+   that Windows id and a fixed offset.
 2. **NST StartupHook Patch #24** (`NSServiceBase.FindClientTimeZone`,
-   `UserSettings.set_TimeZoneInfo`) substitutes a safe zone for any ICU zone that
-   doesn't survive the round-trip, so the server can't crash on a zone the client
-   sends or one already stored in personalization.
-3. **Entrypoint** normalizes the demo DB's `[User Personalization].[Time Zone]`
+   `UserSettings.set_TimeZoneInfo`) substitutes a custom zone with the same id
+   and names and the current offset for any zone that doesn't survive the
+   round-trip, so the server can't crash on a zone the client sends or one
+   already stored in personalization.
+3. **`PatchNclTestPage culture`** rewrites the `TryFindSystemTimeZoneById` in
+   `NavSession.GetPersonalization`, which re-resolves the stored id on every
+   sign-in, to return the same fixed-offset custom zone. Patch #24 cannot cover
+   it: the `UserSettings` setter is inlined there.
+4. **Entrypoint** normalizes the demo DB's `[User Personalization].[Time Zone]`
    to `UTC` *before* NST starts (so its data cache is clean from boot — a SQL
    `UPDATE` after NST is running is masked by the cache).
 
-Why those specific ids: `Etc/GMT±N` are real IANA zones with no DST, so they
-both serialize cleanly *and* re-resolve to a safe zone when BC writes the id back
-to personalization and reads it next login. Sub-hour offsets (India +5:30, Tehran
-+3:30) have no Etc equivalent, so they use a synthetic `UTC±HH:MM` id that
-`TryFindSystemTimeZoneById` skips (leaving the zone unset = safe) while still
-round-tripping as a custom zone for the live session. Trade-off: server-side date
-math uses a fixed offset rather than DST rules for affected zones (off by an hour
-only across a DST transition) — acceptable for a dev/CI container.
+Why Windows ids: BC writes the id back to personalization, and My Settings looks
+it up in the "Time Zone" table, which lists only the 144 Windows ids (issue #132).
+The hooks used to emit `Etc/GMT±N` / synthetic `UTC±HH:MM` ids, which signed in
+fine but made My Settings fail with "The Time Zone does not exist. =<>". A custom
+zone with a Windows id round-trips on .NET 8 and 10, and re-resolving the id next
+login yields the DST zone again, which Patch #24 makes safe again with the same
+id. Several Windows zones share one browser's offsets (+1 h with EU DST: W.
+Europe, Central Europe, Romance, Central European); like Windows, the first in
+Windows' order wins, so Europe/Paris also becomes `W. Europe Standard Time`.
+Trade-off: server-side date math uses a fixed offset rather than DST rules for
+affected zones (off by an hour only across a DST transition) — acceptable for a
+dev/CI container.
 
 Verified by logging in with the browser forced to Europe/Berlin, America/New_York,
 Australia/Sydney (DST), Asia/Kolkata (+5:30), Asia/Tehran (+3:30) and UTC — each
