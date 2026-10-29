@@ -155,6 +155,15 @@ jobs:
         echo "Resolved latest ALCops: $URL"
         echo "url=$URL" >> $GITHUB_OUTPUT
 
+  # Guards the time zone behaviour of Patch #24, BcLinuxTimeZoneLookup and W6b (PR #196).
+  # Needs only the preinstalled .NET 8 SDK on Linux (ICU zones), not the image.
+  timezone-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run time zone checks
+      run: dotnet run --project tests/timezone -c Release
+
   build-image:
     # Build the bc-runner image from THIS commit AND run the matrix against
     # it, by pushing a throwaway `ci-<sha>` tag.
