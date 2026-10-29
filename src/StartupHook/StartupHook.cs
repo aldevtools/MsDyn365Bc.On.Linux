@@ -98,7 +98,7 @@ using System.Threading.Tasks;
 ///   ids (issue #132), and My Settings fails with "'Time Zone' does not exist. =<>" for
 ///   any other. This patch used to store 'Etc/GMT±N' / 'UTC±HH:MM' ids instead.
 ///   NavSession.GetPersonalization re-resolves the stored id through an inlined setter this
-///   hook never sees; PatchNclTestPage `culture` (BcLinuxTimeZoneLookup) covers that call.
+///   hook never sees; PatchNclTestPage `tzlookup` (BcLinuxTimeZoneLookup) covers that call.
 ///
 /// Patch #25: BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Nav.Ncl.dll)
 ///   AL attach-debugging (breakOnNext) sets breakpoints before a session attaches, so
@@ -1720,12 +1720,14 @@ internal class StartupHook
 
     // Mirrors: static TimeZoneInfo FindClientTimeZone(string requestedClientTimeZoneId)
     private static TimeZoneInfo FindClientTimeZoneSafe(string requestedClientTimeZoneId)
+        => ResolveClientTimeZone(requestedClientTimeZoneId, DateTime.UtcNow);
+
+    // utcNow is a parameter so tests/timezone can resolve the same id on both sides of a DST
+    // transition.
+    internal static TimeZoneInfo ResolveClientTimeZone(string requestedClientTimeZoneId, DateTime utcNow)
     {
         if (string.IsNullOrEmpty(requestedClientTimeZoneId))
             throw new ArgumentNullException(nameof(requestedClientTimeZoneId));
-
-        if (_safeTimeZoneCache.TryGetValue(requestedClientTimeZoneId, out var cached))
-            return cached;
 
         // The web client sends Windows ids (W6b). Synthetic "UTC±HH:MM" ids are
         // what earlier builds stored for sub-hour offsets; they don't resolve via
@@ -1749,8 +1751,15 @@ internal class StartupHook
             throw new TimeZoneNotFoundException(message);
         }
 
-        var safe = MakeTimeZoneSerializationSafe(resolved);
-        _safeTimeZoneCache[requestedClientTimeZoneId] = safe;
+        // Keyed by id AND the offset in effect now. The substitute has a fixed offset, so keyed
+        // by id alone a zone resolved in winter stayed on its winter offset for every later
+        // session after the spring transition. Within one offset period the same instance is
+        // handed out, as before; the cache only saves the round-trip test and its log line.
+        var key = requestedClientTimeZoneId + "|" + resolved.GetUtcOffset(utcNow);
+        if (_safeTimeZoneCache.TryGetValue(key, out var cached))
+            return cached;
+        var safe = MakeTimeZoneSerializationSafe(resolved, utcNow);
+        _safeTimeZoneCache[key] = safe;
         return safe;
     }
 
@@ -1765,11 +1774,11 @@ internal class StartupHook
     /// gives the DST zone again, which lands here again, so the Id is stable.
     /// ZoneForOffset (Etc/GMT±N, UTC±HH:MM) is only the last resort.
     /// </summary>
-    internal static TimeZoneInfo MakeTimeZoneSerializationSafe(TimeZoneInfo tz)
+    internal static TimeZoneInfo MakeTimeZoneSerializationSafe(TimeZoneInfo tz, DateTime utcNow)
     {
         if (RoundTrips(tz))
             return tz;
-        var safe = TimeZoneInfo.CreateCustomTimeZone(tz.Id, tz.GetUtcOffset(DateTime.UtcNow), tz.DisplayName, tz.StandardName);
+        var safe = TimeZoneInfo.CreateCustomTimeZone(tz.Id, tz.GetUtcOffset(utcNow), tz.DisplayName, tz.StandardName);
         if (!RoundTrips(safe))
             safe = ZoneForOffset(safe.BaseUtcOffset);
         Console.Error.WriteLine($"[StartupHook] Patch #24: time zone '{tz.Id}' does not survive .NET serialization on Linux — using '{safe.Id}' with fixed offset {safe.BaseUtcOffset}");
@@ -2719,7 +2728,7 @@ internal class StartupHook
     {
         try
         {
-            string? serialized = value == null ? null : MakeTimeZoneSerializationSafe(value).ToSerializedString();
+            string? serialized = value == null ? null : MakeTimeZoneSerializationSafe(value, DateTime.UtcNow).ToSerializedString();
             _userSettingsSerializedTzField!.SetValue(self, serialized);
         }
         catch (Exception ex)
