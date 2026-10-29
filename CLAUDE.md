@@ -1057,9 +1057,14 @@ user zone. **Keeping the id needs a third piece:** on the next sign-in
 `NavSession.GetPersonalization` re-resolves the stored id with
 `TryFindSystemTimeZoneById` (a DST zone again) and stores it through
 `UserSettings.set_TimeZoneInfo`, which the JIT inlines there, so Patch #24's
-hook never runs and `OpenConnection` dies deserializing it. The `culture`
+hook never runs and `OpenConnection` dies deserializing it. The `tzlookup`
 patch rewrites that call to `BcLinuxTimeZoneLookup` (in `BcLinuxTimeZones.cs`),
-which returns the same id as a fixed-offset custom zone. The old `Etc/GMT±N`
+which returns the same id as a fixed-offset custom zone. `tzlookup` runs even with
+`BC_WINDOWS_TEXT=0`; in that mode the "Time Zone" table is the ICU list, so W6b
+matches over `GetSystemTimeZones()` and keeps the ICU id. Patch #24 caches its
+substitute by id **and** current offset: keyed by id alone, a zone first resolved
+in winter kept its winter offset for every session after the spring transition.
+`tests/timezone` checks both. The old `Etc/GMT±N`
 ids hid this because they re-resolve to zones without DST rules. `ZoneForOffset` (the old ids) is only the last resort now. The
 `MakeSerializationSafe` / `ZoneForOffset` pair is duplicated across the two
 hook assemblies on purpose (no shared assembly) — if you touch one, update

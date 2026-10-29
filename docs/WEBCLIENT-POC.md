@@ -175,10 +175,11 @@ and gets **persisted and re-resolved** on each login:
    and names and the current offset for any zone that doesn't survive the
    round-trip, so the server can't crash on a zone the client sends or one
    already stored in personalization.
-3. **`PatchNclTestPage culture`** rewrites the `TryFindSystemTimeZoneById` in
+3. **`PatchNclTestPage tzlookup`** rewrites the `TryFindSystemTimeZoneById` in
    `NavSession.GetPersonalization`, which re-resolves the stored id on every
    sign-in, to return the same fixed-offset custom zone. Patch #24 cannot cover
-   it: the `UserSettings` setter is inlined there.
+   it: the `UserSettings` setter is inlined there. It runs whatever
+   `BC_WINDOWS_TEXT` says: it is a serialization fix, not Windows text.
 4. **Entrypoint** normalizes the demo DB's `[User Personalization].[Time Zone]`
    to `UTC` *before* NST starts (so its data cache is clean from boot — a SQL
    `UPDATE` after NST is running is masked by the cache).
@@ -194,7 +195,15 @@ Europe, Central Europe, Romance, Central European); like Windows, the first in
 Windows' order wins, so Europe/Paris also becomes `W. Europe Standard Time`.
 Trade-off: server-side date math uses a fixed offset rather than DST rules for
 affected zones (off by an hour only across a DST transition) — acceptable for a
-dev/CI container.
+dev/CI container. The offset is taken when a session resolves the zone; Patch
+#24 caches its substitute per id *and* offset, so sessions opened after a DST
+transition get the new offset.
+
+With `BC_WINDOWS_TEXT=0` the "Time Zone" table is left on `GetSystemTimeZones()`,
+the ICU list, and Windows ids are not in it. W6b then matches over that list
+instead, which is exactly what Microsoft's `DetectTimeZone` does on this host,
+and keeps the ICU id (`Europe/Amsterdam` for a Europe/Zurich browser: the first
++1 h zone with EU DST in .NET's order), so My Settings finds it in either mode.
 
 Verified by logging in with the browser forced to Europe/Berlin, America/New_York,
 Australia/Sydney (DST), Asia/Kolkata (+5:30), Asia/Tehran (+3:30) and UTC — each
