@@ -14,8 +14,6 @@ using System.Linq;
 ///   every new CultureInfo(lcid|name) goes through FixWritable (in place, the instance is writable)
 ///   ClientSettings.Refresh:   the formatCulture argument goes through Fix first
 ///   TimeZoneDataProvider:     GetSystemTimeZones() becomes the Windows list (BcLinuxTimeZones.cs)
-///   TryFindSystemTimeZoneById: zones with DST rules come back as fixed-offset custom zones
-///                             with the same id (BcLinuxTimeZoneLookup, in BcLinuxTimeZones.cs)
 ///
 /// Idempotent: a call already followed by Fix, or a Refresh that already starts with it,
 /// is left alone.
@@ -61,21 +59,6 @@ static class PatchCulture
                             ins.Operand = HelperCloner.Clone(module, "BcLinuxTimeZones", "WindowsTimeZones");
                             patched++;
                         }
-                    }
-                }
-
-                // NavSession.GetPersonalization loads the stored time zone id with
-                // TryFindSystemTimeZoneById and stores the zone through an inlined setter that
-                // Patch #24 cannot hook; a DST zone then fails to deserialize on the next sign-in.
-                // Same signature, swapped in place (BcLinuxTimeZoneLookup).
-                foreach (var method in type.Methods.Where(m => m.HasBody))
-                {
-                    foreach (var ins in method.Body.Instructions)
-                    {
-                        if (ins.OpCode.Code != Code.Call || ins.Operand is not MethodReference find) continue;
-                        if (find.Name != "TryFindSystemTimeZoneById" || find.DeclaringType?.FullName != "System.TimeZoneInfo") continue;
-                        ins.Operand = HelperCloner.Clone(module, "BcLinuxTimeZoneLookup", "TryFindSystemTimeZoneById");
-                        patched++;
                     }
                 }
 

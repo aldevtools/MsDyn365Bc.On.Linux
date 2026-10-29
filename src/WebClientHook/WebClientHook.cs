@@ -241,10 +241,21 @@ internal class StartupHook
     private static (TimeZoneInfo Rules, TimeZoneInfo Windows)[]? _windowsZones;
 
     // Windows' order (BaseUtcOffset, then display name), which decides ties.
+    // BC_WINDOWS_TEXT=0 leaves the NST's "Time Zone" table on GetSystemTimeZones(), the ICU
+    // list, so the ids have to come from that list instead: Microsoft's own matching over
+    // GetSystemTimeZones(), with the ICU id kept.
     private static (TimeZoneInfo Rules, TimeZoneInfo Windows)[] WindowsZones()
     {
         if (_windowsZones != null) return _windowsZones;
         var list = new System.Collections.Generic.List<(TimeZoneInfo, TimeZoneInfo)>();
+        // Same test as the entrypoint's `${BC_WINDOWS_TEXT:-1}" = "1"`: anything but unset or 1 is off.
+        var windowsText = Environment.GetEnvironmentVariable("BC_WINDOWS_TEXT");
+        if (!string.IsNullOrEmpty(windowsText) && windowsText != "1")
+        {
+            foreach (var tz in TimeZoneInfo.GetSystemTimeZones())
+                list.Add((tz, tz));
+            return _windowsZones = list.ToArray();
+        }
         foreach (var windows in BcLinuxTimeZones.WindowsTimeZones())
         {
             try { list.Add((TimeZoneInfo.FindSystemTimeZoneById(windows.Id), windows)); }

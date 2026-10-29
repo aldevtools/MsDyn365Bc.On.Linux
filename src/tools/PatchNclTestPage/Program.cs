@@ -56,6 +56,8 @@ class Program
             return PatchNewline.Run(inputPath, outputPath);
         if (command == "filelisting")
             return PatchFileListing.Run(inputPath, outputPath);
+        if (command == "tzlookup")
+            return PatchTimeZoneLookup.Run(inputPath, outputPath);
         if (command == "temppath")
             return PatchTempPath.Run(inputPath, outputPath);
 
