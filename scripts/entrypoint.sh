@@ -549,6 +549,15 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (DotNet directory listings match case-insensitively and sort by name)"
+    # A stored DST time zone loaded by NavSession.GetPersonalization, serialized through an
+    # inlined setter Patch #24 cannot hook, fails to deserialize on the next web client
+    # sign-in. TryFindSystemTimeZoneById returns a fixed-offset zone with the same id instead.
+    # A Linux serialization fix, not Windows text, so it runs whatever BC_WINDOWS_TEXT says.
+    for TZ_ASM in Microsoft.Dynamics.Nav.Ncl Microsoft.Dynamics.Nav.Types; do
+        if $PATCHER tzlookup "$SERVICE_DIR/$TZ_ASM.dll" 2>&1 | tail -1; then
+            log_step "Patched $TZ_ASM.dll (tzlookup, time zones with DST rules load as fixed-offset zones)"
+        fi
+    done
     # Text behaviour a Windows tier has and Linux does not (issue #113). Both are constants
     # inside CoreLib's precompiled code, so no runtime hook can reach them; BC's own call
     # sites are rewritten in the IL instead.

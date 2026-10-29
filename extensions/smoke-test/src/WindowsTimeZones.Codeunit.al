@@ -6,6 +6,11 @@
 // hands the table the Windows list instead (BcLinuxTimeZones.cs).
 //
 // Every expected value is what an official Windows container reported (BC 27.5 and 29.0).
+//
+// The session and user time zone tests guard the other end of the same table: the id BC stores
+// for a session must be one of those Windows ids, or "Time Zone Selection" (My Settings) fails
+// with "'Time Zone' does not exist. =<>". Patch #24 and the web client's W6b used to store
+// 'Etc/GMT-1' for a Europe/Zurich browser.
 codeunit 70041 "BC Linux Time Zone Tests"
 {
     Subtype = Test;
@@ -40,6 +45,49 @@ codeunit 70041 "BC Linux Time Zone Tests"
     begin
         TimeZone.SetRange(ID, 'Europe/Berlin');
         LibraryAssert.RecordIsEmpty(TimeZone);
+    end;
+
+    [Test]
+    procedure SessionTimeZoneIsListed()
+    var
+        CurrentSession: SessionSettings;
+    begin
+        CurrentSession.Init();
+        CheckListed(CurrentSession.TimeZone());
+    end;
+
+    [Test]
+    procedure UserTimeZoneIsListed()
+    var
+        UserPersonalization: Record "User Personalization";
+    begin
+        if not UserPersonalization.Get(UserSecurityId()) then
+            exit;
+        if UserPersonalization."Time Zone" = '' then
+            exit;
+        CheckListed(UserPersonalization."Time Zone");
+    end;
+
+    [Test]
+    procedure IdsTheHooksStoreAreListed()
+    begin
+        // What the web client hook maps UTC, Europe/Zurich, America/New_York and Asia/Kolkata
+        // browsers to, as Windows' own detection does.
+        CheckListed('UTC');
+        CheckListed('W. Europe Standard Time');
+        CheckListed('Eastern Standard Time');
+        CheckListed('India Standard Time');
+    end;
+
+    local procedure CheckListed(Id: Text)
+    var
+        TimeZone: Record "Time Zone";
+        TimeZoneSelection: Codeunit "Time Zone Selection";
+    begin
+        TimeZone.SetRange(ID, Id);
+        LibraryAssert.RecordIsNotEmpty(TimeZone);
+        // My Settings' path: errors with "'Time Zone' does not exist. =<>" for an unlisted id.
+        LibraryAssert.AreNotEqual('', TimeZoneSelection.GetTimeZoneDisplayName(CopyStr(Id, 1, 180)), 'display name of ' + Id);
     end;
 
     local procedure CheckZone(No: Integer; Id: Text; DisplayName: Text)

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Run on Linux, where the round-trip failure happens. From the repository root:
+       docker run (remove) -v "$PWD":/src -w /src/tests/timezone mcr.microsoft.com/dotnet/sdk:8.0-noble-amd64 dotnet run
+       (see Program.cs for the exact command) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/StartupHook/StartupHook.csproj" />
+    <ProjectReference Include="../../src/WebClientHook/WebClientHook.csproj" />
+    <Compile Include="../../src/tools/PatchNclTestPage/BcLinuxTimeZones.cs" Link="BcLinuxTimeZones.cs" />
+  </ItemGroup>
+</Project>

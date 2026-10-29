@@ -94,6 +94,11 @@ using System.Threading.Tasks;
 ///   web client login (InvalidTimeZoneException in NSService.OpenConnection).
 ///   Fix: hook the canonical id→zone resolver to substitute custom fixed-offset zones
 ///   (same id/names, current UTC offset) for zones that don't survive the round-trip.
+///   The id must stay the one BC was given: the "Time Zone" table only lists the Windows
+///   ids (issue #132), and My Settings fails with "'Time Zone' does not exist. =<>" for
+///   any other. This patch used to store 'Etc/GMT±N' / 'UTC±HH:MM' ids instead.
+///   NavSession.GetPersonalization re-resolves the stored id through an inlined setter this
+///   hook never sees; PatchNclTestPage `tzlookup` (BcLinuxTimeZoneLookup) covers that call.
 ///
 /// Patch #25: BaseDebugRuntime.IsDebuggedSessionClosedOrDisposed (Nav.Ncl.dll)
 ///   AL attach-debugging (breakOnNext) sets breakpoints before a session attaches, so
@@ -1715,16 +1720,18 @@ internal class StartupHook
 
     // Mirrors: static TimeZoneInfo FindClientTimeZone(string requestedClientTimeZoneId)
     private static TimeZoneInfo FindClientTimeZoneSafe(string requestedClientTimeZoneId)
+        => ResolveClientTimeZone(requestedClientTimeZoneId, DateTime.UtcNow);
+
+    // utcNow is a parameter so tests/timezone can resolve the same id on both sides of a DST
+    // transition.
+    internal static TimeZoneInfo ResolveClientTimeZone(string requestedClientTimeZoneId, DateTime utcNow)
     {
         if (string.IsNullOrEmpty(requestedClientTimeZoneId))
             throw new ArgumentNullException(nameof(requestedClientTimeZoneId));
 
-        if (_safeTimeZoneCache.TryGetValue(requestedClientTimeZoneId, out var cached))
-            return cached;
-
-        // The web client emits round-trip-safe ids (Etc/GMT±N for whole hours,
-        // synthetic "UTC±HH:MM" for sub-hour). Whole-hour Etc/* ids resolve via
-        // FindSystemTimeZoneById; synthetic ids don't, so parse the offset out.
+        // The web client sends Windows ids (W6b). Synthetic "UTC±HH:MM" ids are
+        // what earlier builds stored for sub-hour offsets; they don't resolve via
+        // FindSystemTimeZoneById, so parse the offset out of them.
         TimeZoneInfo? resolved = null;
         try { resolved = TimeZoneInfo.FindSystemTimeZoneById(requestedClientTimeZoneId); }
         catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException or NullReferenceException)
@@ -1744,33 +1751,44 @@ internal class StartupHook
             throw new TimeZoneNotFoundException(message);
         }
 
-        var safe = MakeTimeZoneSerializationSafe(resolved);
-        _safeTimeZoneCache[requestedClientTimeZoneId] = safe;
+        // Keyed by id AND the offset in effect now. The substitute has a fixed offset, so keyed
+        // by id alone a zone resolved in winter stayed on its winter offset for every later
+        // session after the spring transition. Within one offset period the same instance is
+        // handed out, as before; the cache only saves the round-trip test and its log line.
+        var key = requestedClientTimeZoneId + "|" + resolved.GetUtcOffset(utcNow);
+        if (_safeTimeZoneCache.TryGetValue(key, out var cached))
+            return cached;
+        var safe = MakeTimeZoneSerializationSafe(resolved, utcNow);
+        _safeTimeZoneCache[key] = safe;
         return safe;
     }
 
     /// <summary>
     /// Return a TimeZoneInfo equivalent to <paramref name="tz"/> that is
-    /// guaranteed to survive ToSerializedString → FromSerializedString on Linux
-    /// AND whose Id, once persisted and re-resolved on the next login, still
-    /// yields a safe zone. Whole-hour offsets map to the real "Etc/GMT±N" IANA
-    /// zones (no DST, re-resolvable); sub-hour offsets map to a synthetic
-    /// "UTC±HH:MM" id that TryFindSystemTimeZoneById skips (leaving the zone
-    /// unset = safe) but that round-trips as a custom zone for the live session.
+    /// guaranteed to survive ToSerializedString → FromSerializedString on Linux:
+    /// the zone itself, or a custom zone with the same Id and names and the
+    /// current UTC offset, without DST rules. Keeping the Id is what matters:
+    /// BC persists it in [User Personalization] and looks it up in the "Time
+    /// Zone" table, which only lists Windows ids (issue #132). The custom zone
+    /// round-trips on .NET 8 and 10, and re-resolving its Id on the next login
+    /// gives the DST zone again, which lands here again, so the Id is stable.
+    /// ZoneForOffset (Etc/GMT±N, UTC±HH:MM) is only the last resort.
     /// </summary>
-    internal static TimeZoneInfo MakeTimeZoneSerializationSafe(TimeZoneInfo tz)
+    internal static TimeZoneInfo MakeTimeZoneSerializationSafe(TimeZoneInfo tz, DateTime utcNow)
     {
-        try
-        {
-            TimeZoneInfo.FromSerializedString(tz.ToSerializedString());
-            return tz; // already safe (UTC, Etc/GMT±N, synthetic custom zones)
-        }
-        catch
-        {
-            var safe = ZoneForOffset(tz.GetUtcOffset(DateTime.UtcNow));
-            Console.Error.WriteLine($"[StartupHook] Patch #24: time zone '{tz.Id}' does not survive .NET serialization on Linux — substituting '{safe.Id}'");
-            return safe;
-        }
+        if (RoundTrips(tz))
+            return tz;
+        var safe = TimeZoneInfo.CreateCustomTimeZone(tz.Id, tz.GetUtcOffset(utcNow), tz.DisplayName, tz.StandardName);
+        if (!RoundTrips(safe))
+            safe = ZoneForOffset(safe.BaseUtcOffset);
+        Console.Error.WriteLine($"[StartupHook] Patch #24: time zone '{tz.Id}' does not survive .NET serialization on Linux — using '{safe.Id}' with fixed offset {safe.BaseUtcOffset}");
+        return safe;
+    }
+
+    private static bool RoundTrips(TimeZoneInfo tz)
+    {
+        try { TimeZoneInfo.FromSerializedString(tz.ToSerializedString()); return true; }
+        catch { return false; }
     }
 
     internal static TimeZoneInfo ZoneForOffset(TimeSpan offset)
@@ -2669,10 +2687,11 @@ internal class StartupHook
             // 'Europe/Amsterdam' personalization row — dies in
             // NSService.OpenConnection before the client loads. Nobody outside
             // UTC can sign in to the web client.
-            // The setter is the single choke point: every serialized string is
-            // produced here. Hook it to substitute a custom fixed-offset zone
+            // The setter is the choke point for every caller that does not inline
+            // it; NavSession.GetPersonalization does, see BcLinuxTimeZoneLookup. Hook it to substitute a custom fixed-offset zone
             // (same id/names, current UTC offset) for any zone that doesn't
             // survive the round-trip, so the stored string always deserializes.
+            // The id is kept: the "Time Zone" table only has Windows ids (#132).
             // Trade-off: a fixed offset instead of DST rules for affected zones
             // (off by an hour across a transition) — acceptable for a dev/CI
             // container versus being unable to sign in.
@@ -2709,7 +2728,7 @@ internal class StartupHook
     {
         try
         {
-            string? serialized = value == null ? null : MakeTimeZoneSerializationSafe(value).ToSerializedString();
+            string? serialized = value == null ? null : MakeTimeZoneSerializationSafe(value, DateTime.UtcNow).ToSerializedString();
             _userSettingsSerializedTzField!.SetValue(self, serialized);
         }
         catch (Exception ex)

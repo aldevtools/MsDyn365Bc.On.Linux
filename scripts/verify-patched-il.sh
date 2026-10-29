@@ -51,6 +51,9 @@ for asm in Microsoft.Dynamics.Nav.Ncl Microsoft.Dynamics.Nav.Types; do
         dotnet "$PATCHER" "$p" "$WORK/patched/$asm.dll" 2>&1 | grep -E "^(Rewrote|Redirected|Windows|Framework|ERROR)" | sed "s/^/[verify]   /"
     done
 done
+for asm in Microsoft.Dynamics.Nav.Ncl Microsoft.Dynamics.Nav.Types; do
+    dotnet "$PATCHER" tzlookup "$WORK/patched/$asm.dll" 2>&1 | grep -E "^(Routed|ERROR)" | sed "s/^/[verify]   /"
+done
 dotnet "$PATCHER" temppath "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Patched|ERROR)" | sed "s/^/[verify]   /"
 dotnet "$PATCHER" filelisting "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Routed|ERROR)" | sed "s/^/[verify]   /"
 [ -f "$WORK/patched/YamlDotNet.dll" ] && \
