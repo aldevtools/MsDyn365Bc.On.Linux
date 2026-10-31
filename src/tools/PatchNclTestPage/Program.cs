@@ -60,6 +60,8 @@ class Program
             return PatchTempPath.Run(inputPath, outputPath);
         if (command == "testhttphandler")
             return PatchTestHttpHandler.Run(inputPath, outputPath);
+        if (command == "windowslanguages")
+            return PatchWindowsLanguages.Run(inputPath, outputPath);
         if (command == "filetable")
             return PatchFileTable.Run(inputPath, outputPath);
 

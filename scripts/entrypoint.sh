@@ -568,6 +568,15 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (test codeunits call their HttpClientHandler)"
+    # Windows Language table: ICU lists zh-TW, zh-HK, zh-SG and zh-MO only under script names
+    # (zh-Hant-TW, ...), so BC dropped them (issue #198). Same failure rule as above.
+    LANG_PATCH_OUT=$($PATCHER windowslanguages "$SERVICE_DIR/Microsoft.Dynamics.Nav.Types.dll" 2>&1) && LANG_PATCH_RC=0 || LANG_PATCH_RC=$?
+    echo "$LANG_PATCH_OUT" | tail -2
+    if [ "$LANG_PATCH_RC" != "0" ]; then
+        log_step "ERROR: Windows Language patch for Nav.Types.dll failed (exit $LANG_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Types.dll (Windows Language table lists the Chinese regional cultures)"
     # Text behaviour a Windows tier has and Linux does not (issue #113). Both are constants
     # inside CoreLib's precompiled code, so no runtime hook can reach them; BC's own call
     # sites are rewritten in the IL instead.
