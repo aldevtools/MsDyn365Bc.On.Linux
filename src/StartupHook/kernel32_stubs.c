@@ -82,6 +82,13 @@ int FindStringOrdinal(uint32_t flags, const void* src, int srcCount,
 
 // --- Locale functions ---
 int LCIDToLocaleName(uint32_t locale, void* localeName, int localeNameSize, int flags) {
+    // A size query (no buffer) gets LOCALE_NAME_MAX_LENGTH, so the caller goes on as if the
+    // LCID exists. BC 27/28's WindowsLanguageHelper asks this before it adds a language
+    // group's primary culture (zh → 1028 zh-TW) and then calls CultureInfo.GetCultureInfo
+    // in a try/catch; BC 29 skips the question off Windows (issue #198).
+    if (localeNameSize == 0) {
+        return 85;
+    }
     // Return empty string (0 chars written) — BC will fall back to invariant culture
     if (localeName && localeNameSize > 0) {
         ((uint16_t*)localeName)[0] = 0; // null-terminate UTF-16

@@ -48,6 +48,36 @@ codeunit 70001 "BC Linux Smoke Test 2"
         AssertTableCaptionsAscii(2000000178, 'All Profile');
     end;
 
+    // Regression guard for GitHub issue #198. Windows (BC 27.5, 28.5, a BC 29 SaaS sandbox)
+    // has a Windows Language row for each Chinese regional ID, all with primary language
+    // 1028. ICU lists these cultures only under script names (zh-Hant-TW, ...), so BC 27/28
+    // had no 1028 and BC 29 no 3076, 4100 or 5124. Table 2000000045 is opened by number for
+    // the reason given above; fields 1, 2 and 11 are Language ID, Primary Language ID and
+    // Abbreviated Name.
+    [Test]
+    procedure TestWindowsLanguageHasChineseRegionalIds()
+    begin
+        AssertWindowsLanguage(1028, 'CHT');
+        AssertWindowsLanguage(3076, 'ZHH');
+        AssertWindowsLanguage(4100, 'ZHI');
+        AssertWindowsLanguage(5124, 'ZHM');
+    end;
+
+    local procedure AssertWindowsLanguage(LanguageId: Integer; Abbreviation: Text)
+    var
+        RecRef: RecordRef;
+    begin
+        RecRef.Open(2000000045);
+        RecRef.Field(1).SetRange(LanguageId);
+        LibraryAssert.IsTrue(RecRef.FindFirst(),
+            StrSubstNo('Windows Language has no row for %1 (issue #198)', LanguageId));
+        LibraryAssert.AreEqual(1028, RecRef.Field(2).Value(),
+            StrSubstNo('Primary Language ID of %1', LanguageId));
+        LibraryAssert.AreEqual(Abbreviation, Format(RecRef.Field(11).Value()),
+            StrSubstNo('Abbreviated Name of %1', LanguageId));
+        RecRef.Close();
+    end;
+
     local procedure AssertTableCaptionsAscii(TableNo: Integer; Name: Text)
     var
         RecRef: RecordRef;
