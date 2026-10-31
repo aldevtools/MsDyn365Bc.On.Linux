@@ -58,6 +58,8 @@ class Program
             return PatchFileListing.Run(inputPath, outputPath);
         if (command == "temppath")
             return PatchTempPath.Run(inputPath, outputPath);
+        if (command == "testhttphandler")
+            return PatchTestHttpHandler.Run(inputPath, outputPath);
 
         // Default: patch Nav.Ncl.dll
 

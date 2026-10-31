@@ -549,6 +549,16 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (DotNet directory listings match case-insensitively and sort by name)"
+    # [HttpClientHandler] in a test codeunit: BC only calls the handler when the topology says
+    # "local environment", and Patch #9's topology says no (issue #192). This one read answers
+    # yes, as StandardServiceTopology does on Windows. Same failure rule as above.
+    HTTP_PATCH_OUT=$($PATCHER testhttphandler "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1) && HTTP_PATCH_RC=0 || HTTP_PATCH_RC=$?
+    echo "$HTTP_PATCH_OUT" | tail -2
+    if [ "$HTTP_PATCH_RC" != "0" ]; then
+        log_step "ERROR: test HTTP handler patch for Nav.Ncl.dll failed (exit $HTTP_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Ncl.dll (test codeunits call their HttpClientHandler)"
     # Text behaviour a Windows tier has and Linux does not (issue #113). Both are constants
     # inside CoreLib's precompiled code, so no runtime hook can reach them; BC's own call
     # sites are rewritten in the IL instead.

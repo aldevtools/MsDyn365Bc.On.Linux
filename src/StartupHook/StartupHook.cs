@@ -1155,6 +1155,9 @@ internal class StartupHook
 
             // --- Patch #9: Replace Topology with one that returns IsServiceRunningInLocalEnvironment=false ---
             // This makes NavDirectorySecurity skip Windows ACL APIs (returns null instead).
+            // About 20 places in Nav.Ncl read this flag. NavTestExecution.TestHandleHttpClientRequest
+            // needs Windows' true to call a test's [HttpClientHandler]; PatchNclTestPage's
+            // testhttphandler command rewrites that one read on disk (issue #192).
             Type? topoIfaceType = navNcl.GetType("Microsoft.Dynamics.Nav.Runtime.IServiceTopology");
             if (topoIfaceType != null)
             {
