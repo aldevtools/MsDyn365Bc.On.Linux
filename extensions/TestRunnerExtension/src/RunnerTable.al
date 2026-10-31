@@ -115,6 +115,18 @@ table 99903 "Codeunit Run Request"
             Caption = 'Last Execution (UTC)';
             DataClassification = SystemMetadata;
         }
+
+        /// <summary>
+        /// The test runner codeunit SetupSuite and SetupSuiteAppend give the DEFAULT suite
+        /// (issue #193). 0 means 130450 "Test Runner - Isol. Codeunit", BcContainerHelper's
+        /// default. Set it to run the suite through another runner, such as a test app's own
+        /// codeunit with Subtype = TestRunner (BcContainerHelper's -testRunnerCodeunitId).
+        /// </summary>
+        field(7; TestRunnerId; Integer)
+        {
+            Caption = 'Test Runner Id';
+            DataClassification = SystemMetadata;
+        }
     }
 
     keys
@@ -179,6 +191,7 @@ page 99902 "Codeunit Run Requests"
                 field(Id; Rec.Id) { Editable = false; }
                 field(CodeunitId; Rec.CodeunitId) { }
                 field(CodeunitIds; Rec.CodeunitIds) { }
+                field(TestRunnerId; Rec.TestRunnerId) { }
                 field(Status; Rec.Status) { Editable = false; }
                 field(LastResult; Rec.LastResult) { Editable = false; }
                 field(LastExecutionUTC; Rec.LastExecutionUTC) { Editable = false; }
@@ -222,7 +235,7 @@ page 99902 "Codeunit Run Requests"
         // 130450 = TestIsolation=Codeunit (fresh session per codeunit) ← CORRECT
         // 130451 = TestIsolation=Disabled (no isolation) ← WRONG, causes cascading failures
         SuiteRunner.InitSuite('DEFAULT');
-        OverrideSuiteRunner('DEFAULT', 130450);
+        OverrideSuiteRunner('DEFAULT', SuiteRunnerId());
         exit(AddRequestedCodeunits(SuiteRunner, 'Suite ready') > 0);
     end;
 
@@ -249,7 +262,7 @@ page 99902 "Codeunit Run Requests"
             exit(false);
 
         SuiteRunner.InitSuiteKeep('DEFAULT');
-        OverrideSuiteRunner('DEFAULT', 130450);
+        OverrideSuiteRunner('DEFAULT', SuiteRunnerId());
         exit(AddRequestedCodeunits(SuiteRunner, 'Suite extended') > 0);
     end;
 
@@ -332,6 +345,14 @@ page 99902 "Codeunit Run Requests"
         Rec.LastResult := StrSubstNo('Disabled %1 tests', DisabledCount);
         Rec.Modify(true);
         exit(true);
+    end;
+
+    /// <summary>TestRunnerId, or 130450 when it is 0.</summary>
+    local procedure SuiteRunnerId(): Integer
+    begin
+        if Rec.TestRunnerId = 0 then
+            exit(130450);
+        exit(Rec.TestRunnerId);
     end;
 
     local procedure OverrideSuiteRunner(SuiteName: Code[10]; RunnerId: Integer)

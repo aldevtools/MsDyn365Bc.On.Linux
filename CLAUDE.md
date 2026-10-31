@@ -81,6 +81,19 @@ moved.
 part safe to re-post. `--timeout` is scaled by the number of parts, because it
 used to be a per-part budget and is now a whole-run one.
 
+**The runner codeunit can be chosen** (issue #193). The suite runs through page
+130455 with runner 130450 "Test Runner - Isol. Codeunit", BcContainerHelper's
+default. `--test-runner-codeunit <id>` on `run-tests.sh`, and the
+`test_runner_codeunit_id` input on both reusable workflows, set the suite's
+"Test Runner Id" instead (field `TestRunnerId` on table 99903, Test Runner
+Extension 3.3.0.0). That covers 130451 and a test app's own `Subtype =
+TestRunner` codeunit (BcContainerHelper's `-testRunnerCodeunitId`). The hub has
+no runner codeunit, so with the input set `bc-test-from-source.yml` sends every
+codeunit to the websocket runner, and `test_runner=altool` fails. A runner id
+that does not exist fails the run with BC's "An object with that ID does not
+exist". The extension cannot check it earlier: it has no platform dependency,
+so `AllObj` is not visible to it.
+
 **EXPERIMENTAL altool runner (BC 28+ only):** `scripts/run-tests-altool.py` runs tests through the AL dotnet tool's native `al runtests` command (Microsoft.Dynamics.BusinessCentral.Development.Tools, 18.x prerelease — stable 17.x has no `runtests`), which drives the NST's built-in SignalR hub at `/dev/TestRunnerHub`. No TestRunnerExtension, no OData suite, no WebSocket emulation — the server pushes per-method results (status, output, duration) over the hub. Requires the server to advertise Dev API 7.0 (`GET /BC/dev/metadata`), which only exists in BC 28.0+. Caveats: tests do NOT run under an AL test runner codeunit (no AI tests, no test-runner setup/teardown events, isolation from `RequiredTestIsolation`, default Codeunit) — so Microsoft BCApps suites may behave differently than under `run-tests.sh`; the test app must already be published+installed (the script doesn't publish). The reusable workflow's `test_runner` input defaults to `auto`: after BC is healthy it probes `GET /dev/metadata` (via `run-tests-altool.py --probe`, exit 0 = Dev API ≥ 7.0) and uses the altool runner when supported, falling back to the websocket runner otherwise — so 27.x legs and consumers on older versions keep working unchanged. `websocket` forces the legacy flow; `altool` forces the hub and fails hard when unsupported (the regression-detection mode). `altool_version` pins the dotnet tool. Auth comes from `BC_SERVER_USERNAME`/`BC_SERVER_PASSWORD` env vars, which the script sets from `--auth`. The script's stdout deliberately prints the same `N total, P passed, F failed` and `Test codeunits: ...` lines the workflow parser greps — keep that contract if you touch either side.
 
 ### Editing the startup hook

@@ -55,6 +55,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEST_RUNNER_APP=""
 JUNIT_OUTPUT=""
 RENEW_CLIENT_CONTEXT=0
+TEST_RUNNER_CODEUNIT=""
 
 show_help() {
     cat <<'HELPEOF'
@@ -87,6 +88,12 @@ Options:
                              the whole suite, so SingleInstance codeunit state carries
                              across test codeunits the way it does on a real tier.
                              Turn this on only to reproduce the pre-#65 behaviour.
+  --test-runner-codeunit <id>
+                             Run the suite through this test runner codeunit, for
+                             example 130451 or a test app's own codeunit with
+                             Subtype = TestRunner (BcContainerHelper's
+                             -testRunnerCodeunitId). Default: 130450 "Test Runner -
+                             Isol. Codeunit", BcContainerHelper's default.
   -h, --help                 Show this help
 
 Examples:
@@ -115,12 +122,19 @@ while [[ $# -gt 0 ]]; do
         --disabled-tests) DISABLED_TESTS_DIR="$2"; shift 2;;
         --junit-output) JUNIT_OUTPUT="$2"; shift 2;;
         --renew-client-context) RENEW_CLIENT_CONTEXT=1; shift;;
+        --test-runner-codeunit) TEST_RUNNER_CODEUNIT="$2"; shift 2;;
         --host|--test-runner|--suite-name|--codeunit-timeout|--extension-id|--sql-password) shift 2;;
         *) echo "Unknown option: $1 (try --help)"; exit 1;;
     esac
 done
 
+if [ -n "$TEST_RUNNER_CODEUNIT" ] && ! [[ "$TEST_RUNNER_CODEUNIT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --test-runner-codeunit must be a codeunit id, got '$TEST_RUNNER_CODEUNIT'"
+    exit 1
+fi
+
 echo "=== BC Test Runner ==="
+[ -n "$TEST_RUNNER_CODEUNIT" ] && echo "Test runner codeunit: $TEST_RUNNER_CODEUNIT"
 
 # --- Helper ---
 py3() { env -u PYTHONHOME -u PYTHONPATH python3 "$@"; }
@@ -440,11 +454,17 @@ REQUEST_ID=""
 setup_suite_chunk() {
     local chunk="$1" label="$2" action="${3:-setupSuite}"
     echo -n "Setting up test suite${label}... "
-    local create_body create_http
+    local create_body create_http request_json
+    # TestRunnerId arrived in Test Runner Extension 3.3.0.0 (issue #193). Only send it when
+    # asked for, so the default run still works against an older image.
+    request_json="{\"CodeunitIds\": \"$chunk\"}"
+    if [ -n "$TEST_RUNNER_CODEUNIT" ]; then
+        request_json="{\"CodeunitIds\": \"$chunk\", \"TestRunnerId\": $TEST_RUNNER_CODEUNIT}"
+    fi
     create_body=$(mktemp)
     create_http=$(curl -s -o "$create_body" -w "%{http_code}" --max-time 15 -u "$AUTH" -X POST \
         -H "Content-Type: application/json" \
-        -d "{\"CodeunitIds\": \"$chunk\"}" \
+        -d "$request_json" \
         "${API_BASE}/codeunitRunRequests" 2>/dev/null)
     REQUEST_ID=$(py3 -c "import sys,json; print(json.load(sys.stdin)['Id'])" < "$create_body" 2>/dev/null || true)
 
@@ -453,7 +473,7 @@ setup_suite_chunk() {
         echo ""
         echo "ERROR: POST ${API_BASE}/codeunitRunRequests"
         echo "       HTTP code: $create_http"
-        echo "       Request body: {\"CodeunitIds\": \"$chunk\"}"
+        echo "       Request body: $request_json"
         echo "       CodeunitIds length: ${#chunk} chars (BC's field limit is 2048)"
         echo "       Response body:"
         sed 's/^/         /' "$create_body"
@@ -466,6 +486,10 @@ setup_suite_chunk() {
         echo "           POST in this BC version (the auto-detection picked an endpoint that"
         echo "           accepts GET on this path but not POST)."
         echo "         - The request body schema doesn't match the page's bound action."
+        if [ -n "$TEST_RUNNER_CODEUNIT" ]; then
+            echo "         - The bc-runner image is older than this script: TestRunnerId"
+            echo "           (--test-runner-codeunit) needs Test Runner Extension 3.3.0.0."
+        fi
         echo "         - Application_StringExceededLength above means the part is still"
         echo "           too long — lower BC_CODEUNIT_IDS_MAX_CHARS (currently"
         echo "           ${CODEUNIT_IDS_MAX_CHARS})."
