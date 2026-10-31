@@ -124,6 +124,17 @@ on:
             "50000..50100,130450,200000..210000" mixed
         required: true
         type: string
+      test_runner_codeunit_id:
+        description: >-
+          Run the test suite through this test runner codeunit, for example
+          130451 "Test Runner - Isol. Disabled" or a test app's own codeunit
+          with Subtype = TestRunner (BcContainerHelper's -testRunnerCodeunitId).
+          Blank (default) uses 130450 "Test Runner - Isol. Codeunit",
+          BcContainerHelper's default. Results come back in the same JUnit
+          format (issue #193).
+        required: false
+        type: string
+        default: ""
       extra_apps:
         description: >-
           Newline-separated names of Microsoft apps from the BC artifact to
@@ -479,6 +490,10 @@ jobs:
           if [ -n "${TEST_COMPANY:-}" ]; then
             COMPANY_ARGS=(--company "$TEST_COMPANY")
           fi
+          RUNNER_CODEUNIT_ARGS=()
+          if [ -n "${{ inputs.test_runner_codeunit_id }}" ]; then
+            RUNNER_CODEUNIT_ARGS=(--test-runner-codeunit "${{ inputs.test_runner_codeunit_id }}")
+          fi
           # Per-app JUnit XML — see bc-test-from-source.yml for the rationale.
           mkdir -p ../build
           for app in $TEST_APP_FILES; do
@@ -494,6 +509,7 @@ jobs:
               --base-url "http://localhost:${BC_ODATA_PORT}/BC" \
               --dev-url "http://localhost:${BC_DEV_PORT}/BC/dev" \
               "${COMPANY_ARGS[@]}" \
+              "${RUNNER_CODEUNIT_ARGS[@]}" \
               --timeout 30 2>&1 | tee "$tmplog"
             # `tee` always exits 0; capture run-tests.sh's real exit code.
             RUN_TESTS_RC=${PIPESTATUS[0]}

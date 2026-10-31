@@ -320,6 +320,20 @@ on:
         required: false
         type: string
         default: "auto"
+      test_runner_codeunit_id:
+        description: >-
+          Run the test suite through this test runner codeunit, for example
+          130451 "Test Runner - Isol. Disabled" or a test app's own codeunit
+          with Subtype = TestRunner (BcContainerHelper's -testRunnerCodeunitId).
+          Blank (default) uses 130450 "Test Runner - Isol. Codeunit",
+          BcContainerHelper's default. Only the websocket runner
+          runs tests through a runner codeunit, so when this is set every
+          codeunit goes to it: test_runner=auto uses websocket for the whole
+          run, and test_runner=altool fails. Results come back in the same JUnit
+          format (issue #193).
+        required: false
+        type: string
+        default: ""
       altool_transport:
         description: >-
           How the altool leg of test_runner=auto reaches the TestRunnerHub.
@@ -833,7 +847,7 @@ jobs:
       #   - test_runner=auto on an older version → skip the install; the
       #     run step's live probe will route to the websocket runner
       - name: Install AL dotnet tool (altool test runner)
-        if: inputs.test_runner != 'websocket'
+        if: inputs.test_runner != 'websocket' && inputs.test_runner_codeunit_id == ''
         run: |
           set -e
           BC_MAJOR=$(echo "${{ inputs.bc_version }}" | cut -d. -f1)
@@ -1322,6 +1336,18 @@ jobs:
           # "altool" without server support fails inside the script with
           # a clear error instead of silently degrading.
           EFFECTIVE_RUNNER="${{ inputs.test_runner }}"
+          # A runner codeunit only exists on the websocket path; the hub runs
+          # tests without one (issue #193).
+          RUNNER_CODEUNIT_ARGS=()
+          if [ -n "${{ inputs.test_runner_codeunit_id }}" ]; then
+            RUNNER_CODEUNIT_ARGS=(--test-runner-codeunit "${{ inputs.test_runner_codeunit_id }}")
+            if [ "$EFFECTIVE_RUNNER" = "altool" ]; then
+              echo "ERROR: test_runner_codeunit_id needs the websocket runner; test_runner=altool runs tests without a runner codeunit"
+              exit 1
+            fi
+            EFFECTIVE_RUNNER="websocket"
+            echo "test_runner_codeunit_id=${{ inputs.test_runner_codeunit_id }}: using the websocket runner for every codeunit"
+          fi
           if [ "$EFFECTIVE_RUNNER" = "auto" ]; then
             if [ -x "$HOME/.dotnet/tools/al" ] \
                && python3 scripts/run-tests-altool.py --probe --port "$BC_DEV_PORT"; then
@@ -1406,6 +1432,7 @@ jobs:
                 --base-url "http://localhost:${BC_ODATA_PORT}/BC" \
                 --dev-url "http://localhost:${BC_DEV_PORT}/BC/dev" \
                 "${COMPANY_ARGS[@]}" \
+                "${RUNNER_CODEUNIT_ARGS[@]}" \
                 --timeout ${{ inputs.test_timeout_minutes }} 2>&1 | tee "$tmplog"
             fi
             RUN_TESTS_RC=${PIPESTATUS[0]}
