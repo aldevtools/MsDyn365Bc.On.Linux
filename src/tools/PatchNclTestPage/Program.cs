@@ -62,6 +62,8 @@ class Program
             return PatchTestHttpHandler.Run(inputPath, outputPath);
         if (command == "windowslanguages")
             return PatchWindowsLanguages.Run(inputPath, outputPath);
+        if (command == "filetable")
+            return PatchFileTable.Run(inputPath, outputPath);
 
         // Default: patch Nav.Ncl.dll
 

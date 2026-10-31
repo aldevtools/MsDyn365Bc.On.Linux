@@ -971,6 +971,8 @@ sites are ordinary IL, so `src/tools/PatchNclTestPage` rewrites them on disk in 
 | `uri` | `new Uri(string)` in `NavHttpRequestMessage` / `NavHttpClient` refuses a leading `/` |
 | `culture` | every `CultureInfo.GetCultureInfo(...)` and `new CultureInfo(...)` result goes through `BcLinuxCulture` (U+202F → plain space, da-DK short date, de-DE/es-ES month abbreviations — issue #134; the da-DK time separator, es-ES/nl-NL short dates, en-GB/sv-SE long dates and sv-SE/nb-NO minus sign — issue #157); the "Time Zone" table's `GetSystemTimeZones()` call returns `BcLinuxTimeZones`' 144 Windows zones (issue #132) |
 
+Not text, but in the same Step 2b block: `filetable` (issue #199). The File virtual table's Path field is Code[98], so BC upper-cases `/tmp/x/` to `/TMP/X/`; NTFS ignores the case, Linux did not, and the table was empty. `new DirectoryInfo` in `FileDataProvider.GetItemsInTheDirectory` and `Path.Combine` in `GetBlobContent` go through `BcLinuxFileTable`, which finds each folder part ignoring case. The Path field keeps the upper-cased value, as on Windows. Smoke codeunit 70077 guards it.
+
 The OEM half of `TextEncoding::MSDos` lives in `src/StartupHook/kernel32_stubs.c`
 (`OemToCharBuffA` / `CharToOemBuffA`): code page 437 ↔ 1252 tables. BC builds its own MSDos
 tables from them once, with a pairing fix-up (`NCLManagedAdapter.Initialize`), so the stub

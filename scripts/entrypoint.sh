@@ -549,6 +549,15 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (DotNet directory listings match case-insensitively and sort by name)"
+    # File virtual table: its Path field is Code, so BC upper-cases '/tmp/' to '/TMP/'. NTFS
+    # ignores case; here the folder is found ignoring case too (issue #199). Same failure rule.
+    FILETABLE_PATCH_OUT=$($PATCHER filetable "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1) && FILETABLE_PATCH_RC=0 || FILETABLE_PATCH_RC=$?
+    echo "$FILETABLE_PATCH_OUT" | tail -2
+    if [ "$FILETABLE_PATCH_RC" != "0" ]; then
+        log_step "ERROR: File table patch for Nav.Ncl.dll failed (exit $FILETABLE_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Ncl.dll (File table finds its folder ignoring case)"
     # [HttpClientHandler] in a test codeunit: BC only calls the handler when the topology says
     # "local environment", and Patch #9's topology says no (issue #192). This one read answers
     # yes, as StandardServiceTopology does on Windows. Same failure rule as above.
