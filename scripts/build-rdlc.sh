@@ -152,7 +152,8 @@ gcc -std=c11 -D_POSIX_C_SOURCE=200809L -shared -fPIC -pthread -O2 \
 # PageSettings getters, drops the AppDomain monitoring counters Mono lacks, and
 # rehydrates CultureInfo across the reporting AppDomain boundary.
 log "building the side-service compatibility patcher"
-CECIL=$(find /usr/lib/mono/gac/Mono.Cecil -name Mono.Cecil.dll | head -1)
+# The GAC also holds Mono.Cecil 0.9.5, which the patcher does not compile against: take the newest.
+CECIL=$(find /usr/lib/mono/gac/Mono.Cecil -name Mono.Cecil.dll | sort -V | tail -1)
 test -n "$CECIL"
 SVC=$SRC/prototypes/rdlc/service
 mcs -target:library -r:System.Drawing -out:"$OUT/HeadlessPageSettings.dll" \
