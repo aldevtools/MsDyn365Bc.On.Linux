@@ -370,11 +370,14 @@ def collect(node):
         cuid = cu.get('Id')
         if spans is not None and not in_spans(cuid):
             continue
-        ids.append(str(cuid))
+        ids.append(cuid)
     for ns in node.get('Namespaces', []):
         collect(ns)
 collect(data)
-print(','.join(ids))
+# Run in ID order, like the altool runner and a Windows container, which load the suite with a
+# range filter. SymbolReference.json has its own order, and the order matters: BC caches Execute
+# checks per session, so an earlier codeunit changes what a later one is allowed (issue #209).
+print(','.join(str(i) for i in sorted(set(ids))))
 " 2>/dev/null || true)
     echo "${CODEUNIT_IDS:-none found}"
 fi

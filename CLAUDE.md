@@ -61,6 +61,8 @@ tests that now fail the way a Windows container fails them.
 `TestRunner.dll`. A session lost mid-run is still recovered — the loop opens a
 new one on the next iteration, which is what it always did.
 
+**Codeunits run in ID order** (issue #209). `run-tests.sh` used to keep the order of the app's `SymbolReference.json`, and it did so even for the sorted list `run-tests-hybrid.py` passes it. The order changes results: BC caches Execute checks per session (`NavSession.verifyExecutePermissionCollection`), so what an earlier codeunit did changes what a later one may open under an exact permission set. The same six corpus codeunits failed two tests in symbol order and passed them in ID order, on BC 27.5 and 28.5. It looked like a BC 27.5 problem only because BC 28+ sends these codeunits to the hub runner, which already sorted.
+
 **The suite is posted in parts and run as one** (issue #74). `CodeunitIds` on
 table 99903 is `Text[2048]`, so a long list still has to be split for the POST.
 It used to be set up and *executed* once per part, because `SetupSuite` cleared
