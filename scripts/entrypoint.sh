@@ -558,6 +558,15 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (File table finds its folder ignoring case)"
+    # DateFormula values: BC stores the unit as a control character and ICU ignores those, so 1M
+    # and 1D compared equal and the filter '1M|1D' lost a term (issue #207). Same failure rule.
+    DF_PATCH_OUT=$($PATCHER dateformula "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1) && DF_PATCH_RC=0 || DF_PATCH_RC=$?
+    echo "$DF_PATCH_OUT" | tail -2
+    if [ "$DF_PATCH_RC" != "0" ]; then
+        log_step "ERROR: DateFormula patch for Nav.Ncl.dll failed (exit $DF_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Ncl.dll (DateFormula values compare as different when their units differ)"
     # [HttpClientHandler] in a test codeunit: BC only calls the handler when the topology says
     # "local environment", and Patch #9's topology says no (issue #192). This one read answers
     # yes, as StandardServiceTopology does on Windows. Same failure rule as above.

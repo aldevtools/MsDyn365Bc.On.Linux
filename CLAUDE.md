@@ -973,6 +973,8 @@ sites are ordinary IL, so `src/tools/PatchNclTestPage` rewrites them on disk in 
 
 Not text, but in the same Step 2b block: `filetable` (issue #199). The File virtual table's Path field is Code[98], so BC upper-cases `/tmp/x/` to `/TMP/X/`; NTFS ignores the case, Linux did not, and the table was empty. `new DirectoryInfo` in `FileDataProvider.GetItemsInTheDirectory` and `Path.Combine` in `GetBlobContent` go through `BcLinuxFileTable`, which finds each folder part ignoring case. The Path field keeps the upper-cased value, as on Windows. Smoke codeunit 70077 guards it.
 
+Also in that block: `dateformula` (issue #207). BC stores a formula's unit as a control character (1D is `1` + U+0002, 1M is `1` + U+0005) and `NavStringValue.CompareTo` uses the session culture. ICU ignores control characters, so 1M and 1D compared equal and the filter `'1M|1D'` lost a term. The command adds a `CompareTo(NavStringValue)` override to `NavDateFormula` that breaks a tie ordinally, so Text and Code values are not affected. Smoke codeunit 70078 guards it.
+
 The OEM half of `TextEncoding::MSDos` lives in `src/StartupHook/kernel32_stubs.c`
 (`OemToCharBuffA` / `CharToOemBuffA`): code page 437 ↔ 1252 tables. BC builds its own MSDos
 tables from them once, with a pairing fix-up (`NCLManagedAdapter.Initialize`), so the stub

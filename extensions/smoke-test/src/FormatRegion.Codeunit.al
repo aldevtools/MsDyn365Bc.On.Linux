@@ -68,6 +68,16 @@ codeunit 70071 "BC Linux Format Region"
         LibraryAssert.IsTrue(Formatted[2] = 160, 'fr-FR group separator is U+00A0, got ' + Formatted);
     end;
 
+    // Issue #207: the same for fr-CH on a Windows container, BC 27.5 and 28.5 (CLDR: U+202F).
+    [Test]
+    procedure SwissFrenchGroupSeparatorIsNoBreakSpace()
+    var
+        Formatted: Text;
+    begin
+        Formatted := Part(Run('fr-CH'), 2);
+        LibraryAssert.IsTrue(Formatted[2] = 160, 'fr-CH group separator is U+00A0, got ' + Formatted);
+    end;
+
     local procedure UnknownRegionDataset(): Text
     var
         TempBlob: Codeunit "Temp Blob";
