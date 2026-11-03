@@ -658,6 +658,28 @@ except Exception:
     print('')
 PYEOF
 )
+    # Microsoft moves SkiaSharp inside a major: BC 27.5 and 28.5 went from 3.119.0 to 4.152.1 in
+    # a hotfix on 2026-11-02 (issue #205). A version the image does not carry comes from the same
+    # NuGet package the Dockerfile uses. If that fails, the WARN below applies.
+    if [ -n "$SKIA_VER" ] && [ ! -f "/bc/natives/skia/$SKIA_VER/libSkiaSharp.so" ]; then
+        log_step "SkiaSharp $SKIA_VER is not in this image; downloading its native library from NuGet"
+        python3 - "$SKIA_VER" <<'PYEOF' 2>&1 | sed 's/^/[entrypoint]   /' || true
+import os, sys, tempfile, urllib.request, zipfile
+ver = sys.argv[1]
+url = f'https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.Linux/{ver}'
+dest = f'/bc/natives/skia/{ver}'
+with tempfile.TemporaryFile() as tmp:
+    with urllib.request.urlopen(url, timeout=120) as response:
+        tmp.write(response.read())
+    with zipfile.ZipFile(tmp) as package:
+        data = package.read('runtimes/linux-x64/native/libSkiaSharp.so')
+os.makedirs(dest, exist_ok=True)
+with open(f'{dest}/libSkiaSharp.so.tmp', 'wb') as out:
+    out.write(data)
+os.replace(f'{dest}/libSkiaSharp.so.tmp', f'{dest}/libSkiaSharp.so')
+print(f'{len(data)} bytes from {url}')
+PYEOF
+    fi
     if [ -n "$SKIA_VER" ] && [ -f "/bc/natives/skia/$SKIA_VER/libSkiaSharp.so" ]; then
         cp "/bc/natives/skia/$SKIA_VER/libSkiaSharp.so" "$SERVICE_DIR/libSkiaSharp.so"
         ln -sf /usr/lib/x86_64-linux-gnu/libharfbuzz.so.0 "$SERVICE_DIR/libharfbuzz.so"
