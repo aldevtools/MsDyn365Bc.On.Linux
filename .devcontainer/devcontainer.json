@@ -17,6 +17,9 @@
         "7052": { "label": "BC API" },
         "8080": { "label": "BC web client" }
     },
+    "containerEnv": {
+        "BC_WEBCLIENT": "1"
+    },
     "postCreateCommand": ".devcontainer/setup.sh",
     "customizations": {
         "vscode": {

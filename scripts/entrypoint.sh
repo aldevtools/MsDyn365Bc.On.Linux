@@ -1326,6 +1326,10 @@ if [ "${BC_WEBCLIENT:-0}" = "1" ]; then
     PUBLIC_WEB_URL="${BC_WEBCLIENT_PUBLIC_URL:-http://localhost:${BC_WEBCLIENT_PORT:-8080}${WEBCLIENT_PATHBASE}/}"
     sed -i "s|PublicWebBaseUrl\" value=\"[^\"]*\"|PublicWebBaseUrl\" value=\"$PUBLIC_WEB_URL\"|" "$SERVICE_DIR/CustomSettings.config"
     log_step "PublicWebBaseUrl set to $PUBLIC_WEB_URL (AL debugger F5 / launch-mode browser URL)"
+else
+    # /bc/service is a volume, so a value from a boot with the web client on would stay.
+    # GetUrl(ClientType::Web) is built from this setting (issue #214).
+    sed -i "s|PublicWebBaseUrl\" value=\"[^\"]*\"|PublicWebBaseUrl\" value=\"\"|" "$SERVICE_DIR/CustomSettings.config"
 fi
 
 log_step "Config check:"

@@ -75,7 +75,7 @@ toolkit (Library Assert, Any, Test Runner, ...) is published.
 unless your tests depend on it.
 
 Endpoints: dev `:7049/BC/dev`, OData `:7048/BC/ODataV4`, API `:7052`, web client
-`:8080`. Login `BCRUNNER` / `Admin123!` (not `admin`).
+`:8080` (only with `BC_WEBCLIENT=1`). Login `BCRUNNER` / `Admin123!` (not `admin`).
 
 ## 4. AL compiler
 
