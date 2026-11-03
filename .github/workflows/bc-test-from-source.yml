@@ -320,6 +320,15 @@ on:
         required: false
         type: string
         default: "auto"
+      publish_timeout:
+        description: >-
+          Seconds one app publish may take before the job fails, passed on as
+          BC_PUBLISH_TIMEOUT. Blank (default) uses 1200. BC keeps publishing after
+          the limit, so raising it is the fix when a large app goes over; the
+          job's timeout_minutes still applies (issue #206).
+        required: false
+        type: string
+        default: ""
       test_runner_codeunit_id:
         description: >-
           Run the test suite through this test runner codeunit, for example
@@ -555,6 +564,8 @@ jobs:
       # default — `:-` treats empty and unset alike, so an unset input keeps
       # the mirror rather than resolving to an empty image name.
       BC_SQL_IMAGE: ${{ inputs.sql_image }}
+      # Job-level: the entrypoint, the publish step and run-tests.sh all read it.
+      BC_PUBLISH_TIMEOUT: ${{ inputs.publish_timeout }}
       BC_VERSION: ${{ inputs.bc_version }}
       BC_COUNTRY: ${{ inputs.bc_country }}
       BC_TYPE: ${{ inputs.bc_type }}
