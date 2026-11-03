@@ -132,37 +132,59 @@ arm64_start_sql() {
   return 1
 }
 
-# Restore the newest backup from /backups (docker-compose.arm64-disk.yml) into a
-# fresh SQL, so BC's entrypoint finds the database and skips its restore of the
-# pristine artifact .bak. Returns 0 if restored, 1 if there was nothing to restore,
-# 2 if a restore failed. The bctest login needs no fixing: the entrypoint creates
-# it on every boot and makes it sysadmin.
+# Restore the newest usable backup from /backups (docker-compose.arm64-disk.yml)
+# into a fresh SQL, so BC's entrypoint finds the database and skips its restore of
+# the pristine artifact .bak. Returns 0 if restored, 1 if there was nothing to
+# restore, 2 if every candidate failed. The bctest login needs no fixing: the
+# entrypoint creates it on every boot and makes it sysadmin.
+#
+# Tries the three newest, newest first. arm64-backup.sh only renames a file to
+# .bak after BACKUP succeeded, but a file can still be damaged, and CHECKSUM then
+# fails the restore. A failed RESTORE can leave the database behind in the
+# RESTORING state, and the entrypoint skips its own restore whenever the database
+# exists, so the NST would get a database it cannot open. Hence the DROP after
+# every failure: either a backup restores, or there is no database at all.
 #
 # No MOVE clause: the backup was taken from this same container layout, so the
 # original file paths (/var/opt/mssql/data/...) are valid in the fresh tmpfs, and
 # the logical names are whatever the entrypoint restored (they differ by BC version).
 arm64_restore_newest_backup() {
-  local latest
-  latest=$(docker compose $C exec -T sql sh -c "ls -1t /backups/${ARM64_DB}-*.bak 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')
-  [ -n "$latest" ] || return 1
-  if arm64_sql -Q "RESTORE DATABASE [$ARM64_DB] FROM DISK='$latest' WITH REPLACE, RECOVERY" >/dev/null; then
-    ok "restored newest backup: $latest"
-    return 0
-  fi
-  warn "restoring $latest failed; BC will restore the pristine artifact .bak"
+  local f tried=0
+  for f in $(docker compose $C exec -T sql sh -c "ls -1t /backups/${ARM64_DB}-*.bak 2>/dev/null | head -3" 2>/dev/null | tr -d '\r'); do
+    tried=1
+    if arm64_sql -Q "RESTORE DATABASE [$ARM64_DB] FROM DISK='$f' WITH REPLACE, RECOVERY" >/dev/null; then
+      ok "restored backup: $f"
+      return 0
+    fi
+    warn "restoring $f failed"
+    arm64_sql -Q "IF DB_ID('$ARM64_DB') IS NOT NULL DROP DATABASE [$ARM64_DB]" >/dev/null \
+      || die "could not drop the half-restored $ARM64_DB; BC would start against it. Run with --fresh."
+  done
+  [ "$tried" = 1 ] || return 1
+  warn "no backup restored; BC will restore the pristine artifact .bak"
   return 2
 }
 
-# Wait for the CURRENT bc container to print "Ready for extensions". Callers
-# recreate bc before calling this, so the log cannot hold a line from an older
-# container. Fails as soon as bc or sql stops running.
+# bc is running and has printed "Ready for extensions" SINCE ITS LAST START. With
+# `restart: on-failure`, a restarted container keeps the earlier boot's log
+# lines, so grepping the whole log would call a crashed-and-restarting bc ready.
+arm64_bc_ready() {
+  local id started
+  id=$(docker compose $C ps -q bc 2>/dev/null | head -1)
+  [ -n "$id" ] && [ "$(docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null)" = running ] || return 1
+  started=$(docker inspect --format '{{.State.StartedAt}}' "$id" 2>/dev/null)
+  docker logs --since "$started" "$id" 2>&1 | grep -qa 'Ready for extensions'
+}
+
+# Wait for the bc container to print "Ready for extensions" since its last start.
+# Fails as soon as bc or sql stops running.
 #
 #   arm64_wait_bc <timeout-seconds>
 arm64_wait_bc() {
   local timeout="$1" t0
   t0=$(date +%s)
   while [ $(( $(date +%s) - t0 )) -lt "$timeout" ]; do
-    if docker compose $C logs bc 2>/dev/null | grep -qa 'Ready for extensions'; then
+    if arm64_bc_ready; then
       ok "BC ready in $(( $(date +%s) - t0 ))s"; return 0
     fi
     [ "$(arm64_state bc)" = running ] || die "bc exited ($(arm64_exit bc)) before it was ready. See: docker compose $C logs bc"

@@ -334,5 +334,6 @@ next steps:
   # 4. Tear down (also removes the artifact cache and backup volumes)
   docker compose down -v
 
-SQL is pinned to CPUs 0-3; on a host with fewer, set BC_SQL_CPUSET (e.g. 0-1).
+SQL is pinned to CPUs 0-3; on a host with fewer, add BC_SQL_CPUSET=0-1 (say) to
+.env, so every later compose call and arm64-recover.sh sees it.
 NEXT

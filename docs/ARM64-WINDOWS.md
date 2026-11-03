@@ -52,7 +52,7 @@ and illegibly otherwise:
 | `docker compose` v2 | the stack needs `--wait` and per-service `platform:` |
 | VM page size == 4096 | x86-64 emulation assumes 4 KB pages |
 | CPU has `uscat` (FEAT_LSE2) | the published images bake `fex-emu-armv8.4`; without LSE2 it SIGILLs, which reads as a broken image rather than a CPU mismatch. Rebuild with `--build-arg FEX_PACKAGE=fex-emu-armv8.0` |
-| VM has ≥ 4 CPUs (or `BC_SQL_CPUSET` set) | SQL is pinned to CPUs 0-3; with fewer, container creation fails with "Requested CPUs are not available" |
+| VM has ≥ 4 CPUs (or `BC_SQL_CPUSET` in `.env`) | SQL is pinned to CPUs 0-3; with fewer, container creation fails with "Requested CPUs are not available". Put the override in `.env`, not an `export`, so `arm64-recover.sh` in a later terminal sees it too |
 | VM memory ≥ 22 GB | the *sum* of the compose `mem_limit`s (sql 10g + bc 12g), so an overrunning container hits its own cgroup limit rather than the VM's OOM killer picking a victim — which is indistinguishable from emulation corruption. Arithmetic, **not** a measured minimum: lowering the `mem_limit`s to fit a smaller VM is equally valid |
 | ≥ 25 GB free in the VM | running out mid-restore fails inside SQL and reads as corruption |
 | FEX present in every amd64 image | with `POC` binfmt an image without it cannot exec at all |
@@ -209,7 +209,10 @@ Because SQL can die, two things run alongside the stack:
   CRONUS) to a separate `/backups` volume that recovery never wipes, keeping the
   newest 6. Measured **2s** for a 600 MB compressed backup (the tmpfs source
   helps), so a 5-minute interval is free. `arm64-windows-up.sh` starts this
-  automatically.
+  automatically. Each backup is written as `.tmp` and renamed only when it
+  succeeded, so a SQL death mid-backup cannot leave a torn file as the newest one;
+  restore still tries the three newest and drops a half-restored database between
+  attempts.
 - **`scripts/arm64-recover.sh`** — recreates SQL (never restarts it: a restarted
   `sqlservr` hangs in crash recovery under emulation), restores the newest backup,
   and recreates BC. The flow was validated end to end on 2026-08-14; the scripts
@@ -239,6 +242,11 @@ BC itself has never been the cause of a failure here:
   emulator compatibility demonstrably moves per CU, so CU17 is the cheapest
   remaining experiment with a documented precedent behind it.
 - **AL tests have not been run on this platform.**
+- **Unchecked: the restored database's recovery model.** The backups are
+  `COPY_ONLY`, which never truncate the log. If CRONUS restores in FULL recovery,
+  its log grows until the 6 GB tmpfs is full, and a full disk fails inside SQL
+  like an emulation abort. Check `SELECT recovery_model_desc FROM sys.databases`
+  on a running stack.
 - **The soak was interrupted by host sleep**, so no clean continuous-uptime figure
   exists yet.
 - The `FEX_*` knobs in `docker-compose.arm64-goal.yml` are inherited from the

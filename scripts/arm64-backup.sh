@@ -5,9 +5,10 @@
 #   scripts/arm64-backup.sh [--interval 900] [--keep 6]
 #
 # Context: SQL Server under emulation aborts every few hours (measured MTBF ~5h
-# on this host). A restarted sqlservr then hangs in crash recovery, so the only
-# reliable fix is to recreate it with a fresh data dir — which discards the
-# database. That is fine for a demo and NOT fine for development, hence this.
+# on this host). Its data dir is a tmpfs, so a SQL that comes back after a crash
+# comes back empty — that is the price of never having to run crash recovery
+# under emulation (docker-compose.arm64-disk.yml). Fine for a demo, NOT fine for
+# development, hence this.
 #
 # Backups go to a separate volume (/backups, docker-compose.arm64-disk.yml) that
 # recovery never touches. scripts/arm64-recover.sh and arm64-windows-up.sh restore
@@ -35,9 +36,15 @@ echo "[backup] $ARM64_DB every ${INTERVAL}s, keeping ${KEEP}"
 while true; do
   TS=$(date +%Y%m%d-%H%M%S)
   F="/backups/${ARM64_DB}-$TS.bak"
+  # Written as .tmp and renamed only after BACKUP succeeded. SQL can die in the
+  # middle of a backup, and a torn file named .bak would be the NEWEST one, i.e.
+  # the first thing a restore picks. Leftover .tmp files from such a death are
+  # removed here.
   # COPY_ONLY so these never disturb a real backup chain; CHECKSUM so a backup
   # taken from an emulated instance is at least self-verifying.
-  if ERR=$(arm64_sql -Q "BACKUP DATABASE [$ARM64_DB] TO DISK='$F' WITH COPY_ONLY, INIT, CHECKSUM, COMPRESSION" 2>&1); then
+  docker compose $C exec -T sql sh -c "rm -f /backups/*.tmp" >/dev/null 2>&1
+  if ERR=$(arm64_sql -Q "BACKUP DATABASE [$ARM64_DB] TO DISK='$F.tmp' WITH COPY_ONLY, INIT, CHECKSUM, COMPRESSION" 2>&1) \
+     && ERR=$(docker compose $C exec -T sql mv "$F.tmp" "$F" 2>&1); then
     echo "[backup] $(date -Is) ok -> $F"
     # Prune with the shell inside the sql container. (xp_cmdshell does not exist
     # on SQL Server on Linux.)

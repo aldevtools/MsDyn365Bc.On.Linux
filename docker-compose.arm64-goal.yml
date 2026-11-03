@@ -17,7 +17,8 @@ services:
     # class — but SQLPAL has no ThreadSuspendInjection equivalent, so thread-count
     # reduction is the only lever available. Part of the measured working config
     # (12-core Oryon), not measured on its own. Needs at least 4 CPUs; on a smaller
-    # host set BC_SQL_CPUSET, e.g. 0-1.
+    # host set BC_SQL_CPUSET, e.g. 0-1, in .env: it is read on every compose call,
+    # so an `export` in one terminal is gone by the time arm64-recover.sh runs.
     cpuset: "${BC_SQL_CPUSET:-0-3}"
     # No SQL healthcheck. The stock one runs sqlcmd every 5s, and under emulation
     # every run is a whole new emulated process racing SQLPAL's startup. Measured
@@ -40,7 +41,8 @@ services:
     # those are the calls that crash the emulated NST, and a healthcheck must
     # never be the thing that kills the app.
     healthcheck:
-      test: ["CMD-SHELL", "curl -s --max-time 20 -o /dev/null -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -b -Q 'SELECT 1' >/dev/null || exit 1"]
+      # curl gets 10s so the emulated sqlcmd start still fits inside timeout.
+      test: ["CMD-SHELL", "curl -s --max-time 10 -o /dev/null -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -b -Q 'SELECT 1' >/dev/null || exit 1"]
       interval: 30s
       timeout: 25s
       retries: 3

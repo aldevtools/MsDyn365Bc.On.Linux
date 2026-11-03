@@ -70,9 +70,13 @@ VM_CPUS=${REST%%|*}; CPUFLAGS=${REST#*|}
 
 # docker-compose.arm64-goal.yml pins SQL to CPUs 0-3 (BC_SQL_CPUSET). On a VM with
 # fewer CPUs, container creation fails with "Requested CPUs are not available".
-if [ -z "${BC_SQL_CPUSET:-}" ] && [ "${VM_CPUS:-0}" -lt 4 ] 2>/dev/null; then
+# Read the value compose will actually use, so a BC_SQL_CPUSET in .env counts.
+SQL_CPUSET=$(docker compose $C config 2>/dev/null | grep -m1 'cpuset:' | awk '{print $2}' | tr -d "\"'")
+if [ "$SQL_CPUSET" = "0-3" ] && [ "${VM_CPUS:-0}" -lt 4 ] 2>/dev/null; then
   die "the VM has ${VM_CPUS} CPUs, but SQL is pinned to CPUs 0-3 by default.
-        Set BC_SQL_CPUSET=0-$(( VM_CPUS - 1 )) or give the VM more processors in .wslconfig."
+        Add BC_SQL_CPUSET=0-$(( VM_CPUS - 1 )) to .env in the repo root (every later
+        compose call and arm64-recover.sh read it from there), or give the VM more
+        processors in .wslconfig."
 fi
 
 # FEX emulates x86-64, which assumes 4 KB pages. A 16 KB-page kernel is a
@@ -188,12 +192,9 @@ fi
 
 # ── 5. BC ────────────────────────────────────────────────────────────────────
 # A bc that outlived its SQL holds an NST pointed at a database that no longer
-# exists, so it is recreated whenever SQL was. Recreating also means the log
-# only holds this boot's lines, so "Ready for extensions" cannot come from an
-# older container.
+# exists, so it is recreated whenever SQL was.
 echo "bc"
-if [ "$SQL_NEW" = 0 ] && [ "$(arm64_state bc)" = running ] \
-   && docker compose $C logs bc 2>/dev/null | grep -qa 'Ready for extensions'; then
+if [ "$SQL_NEW" = 0 ] && arm64_bc_ready; then
   ok "BC already up — left as is"
 else
   docker compose $C up -d --no-deps --force-recreate bc >/dev/null 2>&1

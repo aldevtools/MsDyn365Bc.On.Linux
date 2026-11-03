@@ -72,8 +72,8 @@ Measured on Ubuntu 26.04 / Qualcomm Oryon: all 137 apps and the web client,
 `Ready for extensions` in 127s. SQL Server is the weak point here too: if `up`
 reports that sql exited, run it again, and see
 [docs/ARM64-LESSONS.md](docs/ARM64-LESSONS.md) for the backup/recover scripts and
-the settings that made it stable. SQL is pinned to 4 CPUs; on a smaller host set
-`BC_SQL_CPUSET=0-1`. Experimental.
+the settings that made it stable. SQL is pinned to 4 CPUs; on a smaller host add
+`BC_SQL_CPUSET=0-1` to `.env`. Experimental.
 
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and
