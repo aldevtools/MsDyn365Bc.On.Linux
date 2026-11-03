@@ -24,6 +24,7 @@ using System.Globalization;
 ///    and nb-NO minus sign (U+002D, CLDR U+2212).
 ///  * fr-FR, issues #167 and #174: the number group separator is U+00A0 on a Windows BC 27.5, 28.5
 ///    and 29.0 container and U+202F in CLDR.
+///  * fr-CH, issue #207: the same, U+00A0 on a Windows BC 27.5 and 28.5 container.
 ///  * An unknown region such as zz-ZZ (issue #167): the dataset's typed dates are zero-padded
 ///    (01/31/2025) on a Windows container and not (1/31/2025) here. The short date of a custom
 ///    culture (LCID 4096) whose region is ZZ, the CLDR "unknown region", is set to MM/dd/yyyy.
@@ -151,7 +152,8 @@ internal static class BcLinuxCulture
             || string.Equals(name, "nl-NL", StringComparison.Ordinal)
             || string.Equals(name, "sv-SE", StringComparison.Ordinal)
             || string.Equals(name, "nb-NO", StringComparison.Ordinal)
-            || (string.Equals(name, "fr-FR", StringComparison.Ordinal))
+            || string.Equals(name, "fr-FR", StringComparison.Ordinal)
+            || string.Equals(name, "fr-CH", StringComparison.Ordinal)
             || name.EndsWith("-ZZ", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -196,7 +198,8 @@ internal static class BcLinuxCulture
         {
             n.NegativeSign = "-";
         }
-        else if (string.Equals(name, "fr-FR", StringComparison.Ordinal))
+        else if (string.Equals(name, "fr-FR", StringComparison.Ordinal)
+            || string.Equals(name, "fr-CH", StringComparison.Ordinal))
         {
             n.NumberGroupSeparator = "\u00A0";
         }
