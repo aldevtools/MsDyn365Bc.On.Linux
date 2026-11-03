@@ -31,7 +31,7 @@ wsl --shutdown                    # then restart Docker Desktop
 ```bash
 # 3. Clone with LF endings. The image build runs these scripts as bash; CRLF
 #    gives "bad interpreter" / "\r: command not found".
-git -c core.autocrlf=false clone https://github.com/StefanMaron/MsDyn365Bc.On.Linux
+git -c core.autocrlf=false clone https://github.com/aldevtools/MsDyn365Bc.On.Linux
 cd MsDyn365Bc.On.Linux
 
 # 4. One command. Registers binfmt, checks the images, starts SQL (retrying),

@@ -49,8 +49,8 @@ env:
   # The SQL mirror is a byte-for-byte copy of Microsoft's image with no
   # fork-specific content, so upstream's is always correct and there is no reason
   # to require a fork to run mirror-sql-image.yml first.
-  BC_BASE_UPSTREAM: ghcr.io/stefanmaron/msdyn365bc.on.linux/bc-runner:latest
-  SQL_BASE: ghcr.io/stefanmaron/msdyn365bc.on.linux/mssql:2022-zstd
+  BC_BASE_UPSTREAM: ghcr.io/aldevtools/msdyn365bc.on.linux/bc-runner:latest
+  SQL_BASE: ghcr.io/aldevtools/msdyn365bc.on.linux/mssql:2022-zstd
   # The OUTPUT namespace follows whoever runs the workflow. A fork's GITHUB_TOKEN
   # cannot write to upstream's GHCR namespace -- hardcoding it there means the
   # build succeeds and then 403s on push, and every consumer of the fork is left
