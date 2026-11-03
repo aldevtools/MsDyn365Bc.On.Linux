@@ -56,22 +56,23 @@ bc_publish_app() {
         return 1
     fi
 
-    # How long curl waits for the dev endpoint to answer. It was 180s, and a
-    # publish of the AL language corpus app on BC 29.0 took 75-150s, with
-    # 2:28 measured in one run. BC does not stop at our limit: curl gives
-    # up, the publish goes on inside the tier, and the job fails anyway.
-    # 600s is four times the slowest publish seen. BC_PUBLISH_TIMEOUT
-    # overrides it.
-    local max_time="${BC_PUBLISH_TIMEOUT:-600}"
+    # How long curl waits for the dev endpoint to answer. BC does not stop at
+    # our limit: curl gives up, the publish goes on inside the tier, and the
+    # job fails anyway. The limit is there to end a publish that hangs, and the
+    # job's own timeout still applies. 600s stopped being enough in 2026-11:
+    # the AL language corpus app took 280-594s on all of BC 27.5, 28.5 and 29.0
+    # and went over on some runs (issue #206). BC_PUBLISH_TIMEOUT overrides it;
+    # the reusable workflows expose that as the publish_timeout input.
+    local max_time="${BC_PUBLISH_TIMEOUT:-1200}"
 
     local body
     body=$(mktemp)
-    local code started elapsed
+    local code started elapsed curl_exit=0
     started=$(date +%s)
     code=$(curl -s -o "$body" -w "%{http_code}" --max-time "$max_time" \
         -u "$auth" -X POST \
         -F "file=@${app};type=application/octet-stream" \
-        "${dev_url}/apps?SchemaUpdateMode=forcesync" 2>/dev/null)
+        "${dev_url}/apps?SchemaUpdateMode=forcesync" 2>/dev/null) || curl_exit=$?
     elapsed=$(( $(date +%s) - started ))
     # Logged for every publish, so the margin to the limit shows in the log
     # before it is used up.
@@ -82,11 +83,15 @@ bc_publish_app() {
         return 0
     fi
 
-    if [ "$code" = "000" ] && [ "$elapsed" -ge "$max_time" ]; then
+    # curl exit 28 is its own timeout. Do not test the HTTP code for this: curl
+    # reports the last status it saw, which is 100 once BC has answered
+    # "Expect: 100-continue" and 000 before that.
+    if [ "$curl_exit" = "28" ]; then
         echo ""
         echo "ERROR: no answer from the dev endpoint within ${max_time}s for $(basename "$app")"
         echo "       The publish may still be running inside BC. Raise"
-        echo "       BC_PUBLISH_TIMEOUT if this app is known to publish slowly."
+        echo "       BC_PUBLISH_TIMEOUT (the publish_timeout input of the reusable"
+        echo "       workflows) if this app is known to publish slowly."
         echo ""
         rm -f "$body"
         return 1

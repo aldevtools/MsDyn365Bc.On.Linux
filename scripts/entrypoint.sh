@@ -1556,7 +1556,7 @@ exec 3>/tmp/bc-stdin
     # How long each dev-endpoint publish below may take. These were 120s and
     # 300s, and a publish on BC 29.0 has taken 2:28. Same variable and default
     # as scripts/publish-app.sh.
-    PUBLISH_TIMEOUT="${BC_PUBLISH_TIMEOUT:-600}"
+    PUBLISH_TIMEOUT="${BC_PUBLISH_TIMEOUT:-1200}"
     NST_WAIT_START=$(date +%s)
 
     echo "[entrypoint] [$(( $(date +%s) - ENTRYPOINT_START ))s] Waiting for BC to start..."
