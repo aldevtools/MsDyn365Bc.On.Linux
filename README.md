@@ -59,9 +59,14 @@ up, and [docs/ARM64-WINDOWS.md](docs/ARM64-WINDOWS.md) is the how-to. BC boots i
 point** — it fails roughly one start in three and can die under load, so that doc
 also covers the backup/recover loop that makes it usable. Experimental.
 
-On an **arm64 Linux** host (Ampere, Graviton, …) the images are x86-64 only and
-there is no supported path yet. [ARM64.md](ARM64.md) records what has been
-measured about closing that gap — it is an investigation, not a how-to.
+On an **arm64 Linux** host (Ampere, Graviton, Snapdragon, …) the same x86-64
+images run under FEX-Emu: `bash scripts/setup-arm64-host.sh` prepares the host,
+then layer `docker-compose.arm64.yml` and `docker-compose.arm64-goal.yml` on top
+of `docker-compose.yml`. Measured on Ubuntu 26.04 / Qualcomm Oryon: all 137 apps
+and the web client, `Ready for extensions` in 127s, and SQL Server is the weak
+point here too. [docs/ARM64-LESSONS.md](docs/ARM64-LESSONS.md) has the settings
+that made it stable and why; [ARM64.md](ARM64.md) is the full investigation.
+Experimental.
 
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and
