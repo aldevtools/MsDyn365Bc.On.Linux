@@ -217,9 +217,8 @@ Patch that cell while the method is un-JITted and you overwrite the sentinel
 that routes to the prestub; scan for "the last BR" in an 8-word window and you
 patch the *next method's* target (the stride is 24 bytes). Both crash.
 
-**The authoritative layout, refusal rules and a reference implementation are now
-in [docs/ARM64-PRECODE.md](docs/ARM64-PRECODE.md)**, read from CoreCLR sources
-rather than inferred. Two corrections to the paragraph above: the cell found from
+The layout and refusal rules were later read from CoreCLR sources rather than
+inferred (that write-up is not in this repo). Two corrections to the paragraph above: the cell found from
 the first `LDR` *is* the right one (`Target` is loaded by `w0` in both precode
 forms) — the bug was patching it while it still held the un-JITted `entry+8`
 sentinel instead of refusing that value; and .NET 10 adds a `dmb ishld` to the

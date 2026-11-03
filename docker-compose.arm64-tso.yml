@@ -30,7 +30,7 @@
 # Consider adding DOTNET_INTERNAL_ThreadSuspendInjection=0 as well: it fixes the
 # minimal CoreCLR-under-emulation reproducer 20/20 and is what Microsoft's own
 # runtime does automatically for x64-on-arm64 Windows emulation. It was not
-# required for this boot. Caveat from docs/PRIOR-ART.md: with injection disabled,
+# required for this boot. Caveat (from CoreCLR prior art): with injection disabled,
 # a hot managed loop containing no calls, allocations or blocking can stall
 # SuspendEE indefinitely — BC's workload is call-dense so this converges, but it
 # deserves a watchdog rather than optimism.

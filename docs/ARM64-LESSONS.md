@@ -2,11 +2,8 @@
 
 Session log from bringing Business Central up on arm64 Linux (Qualcomm Oryon,
 Ubuntu 26.04, FEX-Emu 2608). Written for the next person — including the wrong
-turns, because several cost hours and are easy to repeat. Companion docs:
-[ARM64.md](../ARM64.md) (measurements), [ARM64-BATTLEPLAN.md](../ARM64-BATTLEPLAN.md)
-(routes + refuted ledger), [ARM64-PRECODE.md](ARM64-PRECODE.md) (native port
-reference), [PRIOR-ART.md](PRIOR-ART.md), [FEX-UPSTREAM-REPORT.md](FEX-UPSTREAM-REPORT.md),
-[FEX-FIX-FEASIBILITY.md](FEX-FIX-FEASIBILITY.md).
+turns, because several cost hours and are easy to repeat. Measurements and the
+native-arm64 investigation: [ARM64.md](../ARM64.md).
 
 ## Where it ended up
 
