@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Shared helper: work out which compose overlay set this HOST needs for the
-# emulated arm64 stack, so the arm64-* scripts don't need BC_COMPOSE_FILES set by
-# hand. Sourced, not executed:
+# Shared helpers for the emulated arm64 stack. Sourced, not executed:
 #
 #   . "$(dirname "${BASH_SOURCE[0]}")/_arm64-compose.sh"
 #   C=$(arm64_compose_files)
 #
-# Why this exists: getting it wrong is silent and expensive. Running
-# arm64-recover.sh with the Linux default on a Docker Desktop host built
+# Everything below that talks to compose uses "$C", so set it first.
+#
+# Why the file set is worked out here: getting it wrong is silent and expensive.
+# Running arm64-recover.sh with the Linux overlay on a Docker Desktop host built
 # containers from the STOCK images, and because the FEX binfmt handler is
 # registered with flags POC (interpreter resolved per-container at exec time), an
 # amd64 image with no FEX baked in cannot exec anything at all -- SQL died with
@@ -19,6 +19,10 @@
 #   2. auto-detected     — base + platform overlay + disk + goal.
 #   3. BC_COMPOSE_EXTRA  — appended to the auto-detected set (diagnostic overlays).
 
+ok()   { printf '  \033[32mok\033[0m    %s\n' "$*"; }
+warn() { printf '  \033[33mwarn\033[0m  %s\n' "$*"; }
+die()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*" >&2; exit 1; }
+
 # Print the -f arguments for this host. Chatter goes to stderr so the result can
 # be captured with $(...).
 arm64_compose_files() {
@@ -29,11 +33,12 @@ arm64_compose_files() {
 
   local files="-f docker-compose.yml" platform="" why=""
 
-  # The discriminator is the DAEMON, not the shell. Docker Desktop runs its daemon
-  # inside its own `docker-desktop` WSL2/VM distro, so docker-compose.arm64.yml's
-  # bind-mounts of /usr/bin/FEX and the aarch64 loader resolve in THAT filesystem
-  # -- not in Windows and not in another WSL distro. Such a host needs the overlay
-  # whose images carry FEX internally instead.
+  # The discriminator is "is the daemon Docker Desktop", not "is this Windows".
+  # Docker Desktop runs its daemon inside its own VM, so docker-compose.arm64.yml's
+  # bind-mounts of /usr/bin/FEX and the aarch64 loader would resolve in THAT
+  # filesystem, not the host's. Such a daemon needs the overlay whose images carry
+  # FEX internally. (Docker Desktop on an Apple Silicon Mac matches too; that host
+  # uses Rosetta and MacOS.md, not these scripts.)
   local dockeros
   dockeros=$(docker info --format '{{.OperatingSystem}}' 2>/dev/null || echo '')
 
@@ -45,7 +50,7 @@ arm64_compose_files() {
   if [ -f docker-compose.arm64-windows.yml ] && \
      { case "$dockeros" in *"Docker Desktop"*) true ;; *) [ "$shellos" = yes ] ;; esac; }; then
     platform="-f docker-compose.arm64-windows.yml"
-    why="Docker Desktop / Windows host — FEX baked into images"
+    why="Docker Desktop daemon — FEX baked into images"
   elif [ -f docker-compose.arm64.yml ]; then
     platform="-f docker-compose.arm64.yml"
     why="Linux host — FEX bind-mounted from the host"
@@ -59,25 +64,110 @@ arm64_compose_files() {
   [ -f docker-compose.arm64-disk.yml ] && files="$files -f docker-compose.arm64-disk.yml"
   [ -f docker-compose.arm64-goal.yml ] && files="$files -f docker-compose.arm64-goal.yml"
 
-  # Windows-only, and it MUST come after goal to win: goal sets
-  # `restart: on-failure:10` on sql, which combined with the tmpfs data dir
-  # destroys the database on every SQL crash and reports it as a login failure.
-  # See the overlay's own header.
-  if [ "$platform" = "-f docker-compose.arm64-windows.yml" ] && \
-     [ -f docker-compose.arm64-windows-late.yml ]; then
-    files="$files -f docker-compose.arm64-windows-late.yml"
-  fi
-
   [ -n "${BC_COMPOSE_EXTRA:-}" ] && files="$files $BC_COMPOSE_EXTRA"
 
   printf '[arm64] compose set: %s\n' "$why" >&2
-
-  # Deliberately NO image check here any more. The overlay now defaults to
-  # published :latest-fex / :2022-fex tags, so "not present locally" is the normal
-  # first-run state and warning about it would be noise. Verifying that the images
-  # really contain FEX -- which is the check that actually matters, and is not the
-  # same as the image existing -- belongs to scripts/arm64-windows-up.sh, which can
-  # fail loudly instead of printing into a command substitution.
-
   printf '%s' "$files"
+}
+
+ARM64_DB="${BC_DATABASE:-CRONUS}"
+
+# sqlcmd as sa inside the sql container. -b is not optional: without it sqlcmd
+# exits 0 when the T-SQL fails, so a failed BACKUP or RESTORE reads as success.
+arm64_sql() {
+  docker compose $C exec -T sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa \
+    -P "${SA_PASSWORD:-Passw0rd123!}" -C -No -b "$@"
+}
+
+arm64_state() { docker inspect --format '{{.State.Status}}' "$(docker compose $C ps -aq "$1" 2>/dev/null | head -1)" 2>/dev/null; }
+arm64_exit()  { docker inspect --format '{{.State.ExitCode}}' "$(docker compose $C ps -aq "$1" 2>/dev/null | head -1)" 2>/dev/null; }
+
+# SQL is up AND answers a real query. The log line alone is not enough.
+arm64_sql_ok() {
+  [ "$(arm64_state sql)" = running ] &&
+    arm64_sql -h-1 -W -Q "SET NOCOUNT ON; SELECT 'tds_ok'" 2>/dev/null | grep -q tds_ok
+}
+
+# (Re)create SQL and retry through its known startup failures. Returns 0 when SQL
+# answers a query. The container is RECREATED, never restarted: the data dir is a
+# tmpfs, so this always starts from an empty instance (see
+# docker-compose.arm64-disk.yml for why that is the safe choice).
+#
+#   arm64_start_sql <attempts>
+arm64_start_sql() {
+  local attempts="$1" i t0 verdict st
+  for i in $(seq 1 "$attempts"); do
+    docker compose $C up -d --no-deps --force-recreate sql >/dev/null 2>&1
+    t0=$(date +%s); verdict=""
+    while [ $(( $(date +%s) - t0 )) -lt 150 ]; do
+      if docker compose $C logs sql 2>/dev/null | grep -qa 'ready for client connections'; then
+        verdict=ready; break
+      fi
+      st=$(arm64_state sql)
+      if [ "$st" != running ]; then verdict="died:$(arm64_exit sql)"; break; fi
+      sleep 5
+    done
+    [ -z "$verdict" ] && verdict=hung
+
+    case "$verdict" in
+      ready)
+        ok "SQL ready in $(( $(date +%s) - t0 ))s (attempt $i)"
+        # Prove it with a real query before handing it to BC.
+        for _ in 1 2 3 4 5 6; do arm64_sql_ok && return 0; sleep 5; done
+        warn "SQL logged ready but does not answer a query — attempt $i/$attempts, recreating" ;;
+      died:139)
+        # QEMU, not FEX, handled the exec. Retrying cannot help.
+        die "SQL segfaulted instantly (exit 139) — that is the QEMU signature.
+        binfmt is not pointing at FEX. On Docker Desktop re-run
+        scripts/arm64-windows-up.sh; on Linux check /proc/sys/fs/binfmt_misc/FEX-x86_64." ;;
+      died:134|died:248)
+        warn "SQL hit the known SQLPAL startup crash (exit ${verdict#died:}) — attempt $i/$attempts, recreating" ;;
+      died:*)
+        warn "SQL exited ${verdict#died:} — attempt $i/$attempts, recreating" ;;
+      hung)
+        # Container alive, sqlservr at ~1% CPU, only the banner lines printed.
+        warn "SQL hung at startup (no 'ready' line in 150s) — attempt $i/$attempts, recreating" ;;
+    esac
+  done
+  return 1
+}
+
+# Restore the newest backup from /backups (docker-compose.arm64-disk.yml) into a
+# fresh SQL, so BC's entrypoint finds the database and skips its restore of the
+# pristine artifact .bak. Returns 0 if restored, 1 if there was nothing to restore,
+# 2 if a restore failed. The bctest login needs no fixing: the entrypoint creates
+# it on every boot and makes it sysadmin.
+#
+# No MOVE clause: the backup was taken from this same container layout, so the
+# original file paths (/var/opt/mssql/data/...) are valid in the fresh tmpfs, and
+# the logical names are whatever the entrypoint restored (they differ by BC version).
+arm64_restore_newest_backup() {
+  local latest
+  latest=$(docker compose $C exec -T sql sh -c "ls -1t /backups/${ARM64_DB}-*.bak 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')
+  [ -n "$latest" ] || return 1
+  if arm64_sql -Q "RESTORE DATABASE [$ARM64_DB] FROM DISK='$latest' WITH REPLACE, RECOVERY" >/dev/null; then
+    ok "restored newest backup: $latest"
+    return 0
+  fi
+  warn "restoring $latest failed; BC will restore the pristine artifact .bak"
+  return 2
+}
+
+# Wait for the CURRENT bc container to print "Ready for extensions". Callers
+# recreate bc before calling this, so the log cannot hold a line from an older
+# container. Fails as soon as bc or sql stops running.
+#
+#   arm64_wait_bc <timeout-seconds>
+arm64_wait_bc() {
+  local timeout="$1" t0
+  t0=$(date +%s)
+  while [ $(( $(date +%s) - t0 )) -lt "$timeout" ]; do
+    if docker compose $C logs bc 2>/dev/null | grep -qa 'Ready for extensions'; then
+      ok "BC ready in $(( $(date +%s) - t0 ))s"; return 0
+    fi
+    [ "$(arm64_state bc)" = running ] || die "bc exited ($(arm64_exit bc)) before it was ready. See: docker compose $C logs bc"
+    [ "$(arm64_state sql)" = running ] || die "SQL died while BC was booting (exit $(arm64_exit sql)). Run scripts/arm64-recover.sh"
+    sleep 10
+  done
+  die "BC not ready after ${timeout}s. See: docker compose $C logs bc"
 }

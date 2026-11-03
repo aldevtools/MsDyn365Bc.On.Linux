@@ -17,12 +17,16 @@
 # scripts/arm64-recover.sh restores the newest one into the fresh tmpfs — which
 # preserves developers' work without reintroducing crash recovery.
 #
-# size=16g is a cap, not a reservation: tmpfs consumes only what is written
-# (~1.2 GB for a restored CRONUS, growing with published apps).
+# size=6g is a cap, not a reservation: tmpfs consumes only what is written
+# (~1.2 GB for a restored CRONUS, growing with published apps). It is NOT free
+# space, though: tmpfs pages are charged to the sql container's memory cgroup, so
+# the cap has to fit inside sql's mem_limit together with SQL's own memory
+# (MSSQL_MEMORY_LIMIT_MB). With a larger cap, a growing database gets SQL
+# OOM-killed (exit 137) instead of a "disk full" error SQL can report.
 services:
   sql:
     tmpfs:
-      - /var/opt/mssql/data:size=16g,uid=10001,gid=10001
+      - /var/opt/mssql/data:size=6g,uid=10001,gid=10001
     volumes:
       - bc-sqlbackups:/backups
 volumes:

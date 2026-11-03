@@ -2,8 +2,8 @@
 
 Session log from bringing Business Central up on arm64 Linux (Qualcomm Oryon,
 Ubuntu 26.04, FEX-Emu 2608). Written for the next person — including the wrong
-turns, because several cost hours and are easy to repeat. Measurements and the
-native-arm64 investigation: [ARM64.md](../ARM64.md).
+turns, because several cost hours and are easy to repeat. The Windows-on-ARM
+sibling is [ARM64-WINDOWS.md](ARM64-WINDOWS.md).
 
 ## Where it ended up
 
@@ -12,6 +12,20 @@ an emulated amd64 container stack on an arm64 host. `Ready for extensions` in
 127s. A 3-hour soak (238 polls at 45s) recorded SQL 100%, API 99.6%, web 99.6%,
 no failures. SQL Server then aborted at ~5h uptime — that is the limiting
 component, and it is why the backup/recover scripts exist.
+
+## Running it
+
+```bash
+bash scripts/setup-arm64-host.sh            # once: FEX, binfmt, host checks
+export COMPOSE_FILE=docker-compose.yml:docker-compose.arm64.yml:docker-compose.arm64-disk.yml:docker-compose.arm64-goal.yml
+docker compose up -d --wait                  # if sql exited at startup, run again
+nohup bash scripts/arm64-backup.sh --interval 300 --keep 6 >/tmp/arm64-backup.log 2>&1 &
+bash scripts/arm64-recover.sh                # after a SQL death: recreate + restore newest backup
+```
+
+The data dir is a tmpfs on purpose (`docker-compose.arm64-disk.yml` says why), so
+SQL has no restart policy: a restart would bring it back empty. Backups go to the
+`bc-sqlbackups` volume, which recovery never touches.
 
 ## The three settings that made it work
 

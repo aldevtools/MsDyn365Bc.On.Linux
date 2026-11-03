@@ -60,13 +60,20 @@ point** — it fails roughly one start in three and can die under load, so that 
 also covers the backup/recover loop that makes it usable. Experimental.
 
 On an **arm64 Linux** host (Ampere, Graviton, Snapdragon, …) the same x86-64
-images run under FEX-Emu: `bash scripts/setup-arm64-host.sh` prepares the host,
-then layer `docker-compose.arm64.yml` and `docker-compose.arm64-goal.yml` on top
-of `docker-compose.yml`. Measured on Ubuntu 26.04 / Qualcomm Oryon: all 137 apps
-and the web client, `Ready for extensions` in 127s, and SQL Server is the weak
-point here too. [docs/ARM64-LESSONS.md](docs/ARM64-LESSONS.md) has the settings
-that made it stable and why; [ARM64.md](ARM64.md) is the full investigation.
-Experimental.
+images run under FEX-Emu. `bash scripts/setup-arm64-host.sh` installs FEX and
+checks the host, then:
+
+```bash
+export COMPOSE_FILE=docker-compose.yml:docker-compose.arm64.yml:docker-compose.arm64-disk.yml:docker-compose.arm64-goal.yml
+docker compose up -d --wait
+```
+
+Measured on Ubuntu 26.04 / Qualcomm Oryon: all 137 apps and the web client,
+`Ready for extensions` in 127s. SQL Server is the weak point here too: if `up`
+reports that sql exited, run it again, and see
+[docs/ARM64-LESSONS.md](docs/ARM64-LESSONS.md) for the backup/recover scripts and
+the settings that made it stable. SQL is pinned to 4 CPUs; on a smaller host set
+`BC_SQL_CPUSET=0-1`. Experimental.
 
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and

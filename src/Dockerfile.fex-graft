@@ -1,18 +1,17 @@
 # Graft FEX-Emu into an amd64 image so it can run on an arm64 Windows host under
 # Docker Desktop. Parameterized over the base image:
 #
-#   docker build --platform linux/amd64 -f Dockerfile.fex-graft \
-#     --build-arg BASE_IMAGE=ghcr.io/.../mssql:2022-zstd -t bc-arm64win/mssql-fex:2022 .
-#   docker build --platform linux/amd64 -f Dockerfile.fex-graft \
-#     --build-arg BASE_IMAGE=ghcr.io/.../bc-runner:latest -t bc-arm64win/bc-runner-fex:latest .
+#   docker build --platform linux/amd64 -f src/Dockerfile.fex-graft \
+#     --build-arg BASE_IMAGE=ghcr.io/.../mssql:2022-zstd -t bc-arm64win/mssql-fex:2022 src/
+#   docker build --platform linux/amd64 -f src/Dockerfile.fex-graft \
+#     --build-arg BASE_IMAGE=ghcr.io/.../bc-runner:latest -t bc-arm64win/bc-runner-fex:latest src/
 #
 # Why bake FEX in rather than bind-mount it as docker-compose.arm64.yml does:
 # Docker Desktop's daemon lives in its own `docker-desktop` WSL2 distro, so a
 # host bind-mount source resolves in THAT filesystem -- not Windows, not another
-# WSL distro. This is ARM64.md's "self-contained variant of putting FEX in the
-# image", with the version pinned by PPA suite rather than a hand-picked deb URL.
+# WSL distro. The version is pinned by PPA suite rather than a hand-picked deb URL.
 #
-# FEX is dynamically linked (verified in ARM64.md), and binfmt_misc's F flag pins
+# FEX is dynamically linked, and binfmt_misc's F flag pins
 # only the interpreter EXECUTABLE, not its libraries -- so the aarch64 loader and
 # every DT_NEEDED lib must exist inside this amd64 rootfs. Nothing collides:
 # aarch64 and x86-64 library paths are disjoint in a Debian-derived tree.
@@ -27,7 +26,7 @@
 ARG BASE_IMAGE
 
 # resolute = Ubuntu 26.04, the suite carrying fex-emu-armv8.4 2608~1-3~r: the same
-# build ARM64.md's measurements were taken on. armv8.4 is right for this CPU --
+# build the arm64 measurements were taken on. armv8.4 is right for this CPU --
 # /proc/cpuinfo advertises both `atomics` (FEAT_LSE) and `uscat` (FEAT_LSE2), and
 # the microarch level determines how expensive FEX's x86 store-ordering emulation is.
 FROM --platform=linux/arm64 ubuntu:26.04 AS fexstage
@@ -35,7 +34,7 @@ FROM --platform=linux/arm64 ubuntu:26.04 AS fexstage
 # signal handling are exactly what this stack depends on, so a PPA bump must be a
 # deliberate, reviewable diff -- not something that silently rides along on the
 # next image rebuild and changes SQL Server's stability underneath you.
-# 2608~1-3~r is the build ARM64.md's measurements were taken on.
+# 2608~1-3~r is the build the arm64 measurements were taken on.
 ARG FEX_PACKAGE=fex-emu-armv8.4
 ARG FEX_VERSION=2608~1-3~r
 RUN set -eux; \
@@ -80,7 +79,8 @@ COPY --from=fexstage /fexroot/ /
 #
 # HOME is deliberately NOT set here. It is required for the mssql image (uid 10001
 # with no HOME, where FEX falls back to ./.config/fex-emu in an unwritable cwd and
-# dies with "Couldn't connect to FEXServer socket") and is supplied by the compose
-# overlay for that service only. Forcing HOME=/tmp on the bc image would move
-# root's HOME out from under BC's own tooling for no reason.
+# dies with "Couldn't connect to FEXServer socket") and the compose overlays set
+# it per service. bc runs as root with a writable HOME and does not need it;
+# docker-compose.arm64.yml sets it on bc anyway, which is harmless (nothing in
+# the entrypoint or the startup hook reads HOME).
 ENV FEX_ROOTFS=/

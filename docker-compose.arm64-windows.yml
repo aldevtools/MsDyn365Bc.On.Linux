@@ -1,35 +1,22 @@
-# arm64 Windows host (Snapdragon X Elite), amd64 containers, Docker Desktop/WSL2.
+# arm64 Windows host (Snapdragon X), amd64 containers, Docker Desktop/WSL2.
 #
 # The Windows sibling of docker-compose.arm64.yml. Two differences, both forced
 # by the platform rather than chosen:
 #
-#  1. NO FEX MOUNTS. docker-compose.arm64.yml bind-mounts /usr/bin/FEX and the
-#     aarch64 loader + 4 libs from the host, because FEX is dynamically linked
-#     and binfmt's F flag pins only the interpreter executable. That cannot work
-#     here: Docker Desktop's daemon runs inside its own `docker-desktop` WSL2
-#     distro, so a host path resolves in THAT filesystem, not in the Windows one
-#     and not in any other WSL distro. If FEX is wanted here it has to be baked
-#     into the image (ARM64.md's dpkg-deb -x variant) or staged on a Windows path.
+#  1. FEX IS BAKED INTO THE IMAGES, not mounted. docker-compose.arm64.yml
+#     bind-mounts /usr/bin/FEX and the aarch64 loader + 4 libs from the host.
+#     That cannot work here: Docker Desktop's daemon runs inside its own
+#     `docker-desktop` WSL2 distro, so a host path resolves in THAT filesystem.
+#     The :latest-fex / :2022-fex images (src/Dockerfile.fex-graft) carry FEX.
 #
-#  2. THE EMULATOR IS QEMU, NOT FEX. Docker Desktop pre-registers
-#     /usr/bin/qemu-x86_64 with flags POCF (verified: cat
-#     /proc/sys/fs/binfmt_misc/x86_64). So every FEX_* knob in
-#     docker-compose.arm64-goal.yml is inert here -- including the two that
-#     ARM64-LESSONS.md records as load-bearing (FEX_VECTORTSOENABLED,
-#     FEX_MEMCPYSETTSOENABLED). Whether QEMU has an equivalent x86-store-ordering
-#     gap is the open question this overlay exists to measure; qemu-user's mttcg
-#     mode inserts barriers for the x86 memory model, which FEX does not do for
-#     vector/memcpy paths, so it is NOT safe to assume the same failure shape.
+#  2. DOCKER DESKTOP REGISTERS QEMU for x86-64 (/usr/bin/qemu-x86_64, flags POCF),
+#     and under QEMU SQL Server dies instantly. The binfmt service below swaps it
+#     for FEX on every start, because the registration does not survive a VM
+#     restart.
 #
-# The DOTNET_* mitigations DO carry over, because they are properties of CoreCLR
-# under any emulator, not of FEX -- see docker-compose.arm64-goal.yml for the
-# mechanism behind each. They are deliberately NOT set here: this overlay is the
-# baseline. Layer the goal overlay on top to add them, so the difference is
-# attributable.
-#
-# Usage -- SQL FIRST, it is the cheap half of the go/no-go:
-#   docker compose -f docker-compose.yml -f docker-compose.arm64-windows.yml up -d sql
-#   docker compose -f docker-compose.yml -f docker-compose.arm64-windows.yml up -d --wait
+# Normally started through scripts/arm64-windows-up.sh, which layers
+# docker-compose.arm64-disk.yml and docker-compose.arm64-goal.yml on top and
+# handles SQL's startup failures. See docs/ARM64-WINDOWS.md.
 services:
   # Registers FEX as the kernel's x86-64 binfmt handler and disables Docker
   # Desktop's QEMU one, then exits. sql and bc both gate on it completing.
@@ -53,7 +40,7 @@ services:
     depends_on:
       binfmt:
         condition: service_completed_successfully
-    # FEX-grafted image, built by scratchpad Dockerfile.fex-graft from the stock
+    # FEX-grafted image, built by src/Dockerfile.fex-graft from the stock
     # mssql image. MEASURED 2026-08-13, and this is the finding that justifies the
     # whole graft: under Docker Desktop's stock QEMU handler, SQL Server dies with
     # `qemu: uncaught target signal 11 (Segmentation fault)` before it prints a
@@ -79,23 +66,9 @@ services:
       # "Couldn't connect to FEXServer socket". Verified on Linux that HOME alone
       # fixes it and XDG_CONFIG_HOME alone does not.
       HOME: /tmp
-    # Disable SQL's healthcheck. This is a STABILITY setting here, not a tidiness
-    # one. The stock check (docker-compose.yml) runs sqlcmd every 5s from t=0, and
-    # under FEX every invocation is a whole new EMULATED guest process, racing
-    # SQLPAL's LSA/SAM init and sharing HOME=/tmp for the FEXServer handshake.
+    # SQL's healthcheck is disabled in docker-compose.arm64-goal.yml, for both
+    # platforms; the reason is there.
     #
-    # Measured 2026-08-13/14 on this box:
-    #   healthcheck enabled  -> SQL aborted (exit 134) after 35.5 min
-    #   healthcheck disabled -> >20 h uptime, zero fatal errors
-    # (n=1 each, host slept during the long run, near-idle load — see
-    # docs/ARM64-WINDOWS.md. Not a clean 20h figure, but far outside the noise.)
-    #
-    # Nothing depended on it: docker-compose.yml gates bc on `service_started`,
-    # and docker-compose.arm64-goal.yml's bc healthcheck already does a real TDS
-    # roundtrip against SQL. scripts/arm64-windows-up.sh reads readiness from
-    # SQL's own log line instead, which costs no emulated process at all.
-    healthcheck:
-      disable: true
     # Not about disk space. An emulated process reserves a very large virtual
     # address space, and a core dump of it is what took the Linux host down on
     # 2026-08-12 (apport reached ~20 GB resident and drove a 30 GB box into
@@ -103,10 +76,13 @@ services:
     # rather than the desktop -- keep it anyway, the dump is worthless to us.
     ulimits:
       core: 0
-    # 8g + bc's 14g = 22g, inside the 24 GB .wslconfig gives the WSL2 VM. Sized
+    # 10g + bc's 12g = 22g, inside the 24 GB .wslconfig gives the WSL2 VM. Sized
     # so the VM itself never has to OOM-kill: a VM-level kill would look exactly
-    # like the emulation corruption this experiment is trying to measure.
-    mem_limit: 8g
+    # like the emulation corruption this stack is prone to. 10g, not less, because
+    # the tmpfs data dir is charged to this cgroup: up to 6g of database files
+    # (docker-compose.arm64-disk.yml) plus MSSQL_MEMORY_LIMIT_MB (3 GB) plus the
+    # process itself.
+    mem_limit: 10g
   bc:
     depends_on:
       binfmt:
@@ -126,4 +102,5 @@ services:
     # platform: linux/amd64 is already set in docker-compose.yml.
     ulimits:
       core: 0
-    mem_limit: 14g
+    # Arithmetic, not a measured need: BC's working set is well under this.
+    mem_limit: 12g

@@ -1,30 +1,46 @@
 # Target configuration: all apps + web client, with every mitigation that has a
-# mechanism behind it. Layer AFTER docker-compose.arm64.yml.
+# mechanism behind it. Layer AFTER the platform overlay (docker-compose.arm64.yml
+# or docker-compose.arm64-windows.yml) and docker-compose.arm64-disk.yml.
 services:
   sql:
-    # Restart automatically. Under emulation MTBF cannot be driven to infinity,
-    # but mean-time-to-recovery can be held to a couple of minutes.
-    restart: on-failure:10
+    # NO restart policy, on purpose. The data dir is a tmpfs, so a restarted SQL
+    # comes back EMPTY: the restored database and the bctest login are gone, and
+    # the NST reports "Login failed for user 'bctest'" three restarts downstream
+    # of a SQLPAL crash that has already scrolled out of the log (measured
+    # 2026-08-13). A restart also does nothing for a HUNG sqlservr. The response
+    # to a SQL death is scripts/arm64-recover.sh, which recreates SQL and restores
+    # the newest backup.
+    #
     # Fewer visible CPUs => fewer SOS schedulers and worker threads => fewer
     # threads that can be mid-instruction when a signal lands. SQLPAL rewrites
     # ucontext in signal handlers like CoreCLR does, so this is the same defect
     # class — but SQLPAL has no ThreadSuspendInjection equivalent, so thread-count
-    # reduction is the only lever available. Also matches long-standing Microsoft
-    # guidance for NAV/BC: its ORM emits OLTP-shaped queries that gain nothing
-    # from parallelism.
-    cpuset: "0-3"
+    # reduction is the only lever available. Part of the measured working config
+    # (12-core Oryon), not measured on its own. Needs at least 4 CPUs; on a smaller
+    # host set BC_SQL_CPUSET, e.g. 0-1.
+    cpuset: "${BC_SQL_CPUSET:-0-3}"
+    # No SQL healthcheck. The stock one runs sqlcmd every 5s, and under emulation
+    # every run is a whole new emulated process racing SQLPAL's startup. Measured
+    # on Windows/WSL2: enabled, SQL aborted (exit 134) after 35.5 min; disabled,
+    # >20 h uptime (n=1 each, see docs/ARM64-WINDOWS.md). Nothing waits on it: the
+    # base compose gates bc on service_started, bc's healthcheck below does a TDS
+    # roundtrip, and the scripts read SQL's own log line.
+    healthcheck:
+      disable: true
     environment:
-      MSSQL_MEMORY_LIMIT_MB: "3072"
+      MSSQL_MEMORY_LIMIT_MB: "${MSSQL_MEMORY_LIMIT_MB:-3072}"
   bc:
     restart: on-failure:10
     # The stock healthcheck curls ODataV4/Company, which the NST answers from
     # cache — that is how this stack reported "healthy" for an hour while SQL was
-    # dead and every request hung. Probe BOTH tiers: the dev endpoint for the NST,
-    # and a real TDS roundtrip from inside the bc container for the database.
-    # Deliberately NOT an OData business query: those are the calls that crash the
-    # emulated NST, and a healthcheck must never be the thing that kills the app.
+    # dead and every request hung. Probe BOTH tiers: any HTTP answer from the dev
+    # endpoint for the NST (not -f: /BC/dev/metadata only exists on BC 28+, and a
+    # 404 still proves the NST is serving), and a real TDS roundtrip from inside
+    # the bc container for the database. Deliberately NOT an OData business query:
+    # those are the calls that crash the emulated NST, and a healthcheck must
+    # never be the thing that kills the app.
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata >/dev/null && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -Q 'SELECT 1' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -s --max-time 20 -o /dev/null -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -b -Q 'SELECT 1' >/dev/null || exit 1"]
       interval: 30s
       timeout: 25s
       retries: 3

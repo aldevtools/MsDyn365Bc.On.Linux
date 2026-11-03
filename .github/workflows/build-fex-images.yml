@@ -23,10 +23,6 @@ on:
       fex_version:
         description: FEX package version from ppa:fex-emu/fex (Ubuntu 26.04 "resolute" suite)
         default: 2608~1-3~r
-      force:
-        description: Rebuild even if the tags already exist
-        type: boolean
-        default: false
   push:
     branches: [master]
     paths:
@@ -36,6 +32,14 @@ on:
   workflow_run:
     workflows: ["Build and push bc-runner image", "Mirror SQL Server image to GHCR"]
     types: [completed]
+
+# One push to master that touches src/ fires this twice: once from `push` (if the
+# graft changed) and once from `workflow_run` after build-image.yml finishes. The
+# later run is the one that grafts the NEW base, so it cancels the earlier one
+# instead of racing it for the same tags.
+concurrency:
+  group: build-fex-images
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -58,7 +62,7 @@ env:
   # publish somewhere other than your own namespace.
   #
   # GHCR requires a LOWERCASE owner; github.repository_owner preserves the case
-  # you registered with (e.g. "SShadowS"), so it is lowercased at use.
+  # the account was registered with, so it is lowercased at use.
   IMAGE_OWNER: ${{ vars.FEX_IMAGE_OWNER || github.repository_owner }}
 
 jobs:
@@ -69,6 +73,9 @@ jobs:
     # x86 runner this same build would need QEMU for the arm64 stage.
     # ubuntu-24.04-arm is free for public repos.
     runs-on: ubuntu-24.04-arm
+    # A failed base build leaves the base tag where it was; grafting onto it again
+    # would only republish the old image.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: write

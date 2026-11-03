@@ -7,9 +7,8 @@ Status: **works, with one caveat that is the whole story** — BC itself is soli
 and SQL Server under emulation is not. Read "SQL Server is the limiting
 component" before relying on this for anything you would be upset to lose.
 
-Companion docs: [ARM64.md](../ARM64.md) (the measurements this builds on),
-[ARM64-LESSONS.md](ARM64-LESSONS.md) (the arm64 *Linux* session log — most of its
-traps apply here too).
+Companion doc: [ARM64-LESSONS.md](ARM64-LESSONS.md) (the arm64 *Linux* session
+log — most of its traps apply here too).
 
 ## Quick start
 
@@ -29,13 +28,14 @@ wsl --shutdown                    # then restart Docker Desktop
 ```
 
 ```bash
-# 3. Clone with LF endings. The image build runs these scripts as bash; CRLF
-#    gives "bad interpreter" / "\r: command not found".
-git -c core.autocrlf=false clone https://github.com/aldevtools/MsDyn365Bc.On.Linux
+# 3. Clone. .gitattributes keeps the shell scripts LF even with Git for Windows'
+#    default core.autocrlf=true (CRLF gives "\r: command not found").
+git clone https://github.com/aldevtools/MsDyn365Bc.On.Linux
 cd MsDyn365Bc.On.Linux
 
 # 4. One command. Registers binfmt, checks the images, starts SQL (retrying),
-#    starts BC, starts periodic backups.
+#    restores the newest backup if there is one, starts BC, starts periodic
+#    backups. Safe to re-run: a stack that is already up is left alone.
 bash scripts/arm64-windows-up.sh
 ```
 
@@ -52,7 +52,8 @@ and illegibly otherwise:
 | `docker compose` v2 | the stack needs `--wait` and per-service `platform:` |
 | VM page size == 4096 | x86-64 emulation assumes 4 KB pages |
 | CPU has `uscat` (FEAT_LSE2) | the published images bake `fex-emu-armv8.4`; without LSE2 it SIGILLs, which reads as a broken image rather than a CPU mismatch. Rebuild with `--build-arg FEX_PACKAGE=fex-emu-armv8.0` |
-| VM memory ≥ 22 GB | the *sum* of the compose `mem_limit`s (sql 8g + bc 14g), so an overrunning container hits its own cgroup limit rather than the VM's OOM killer picking a victim — which is indistinguishable from emulation corruption. Arithmetic, **not** a measured minimum: lowering the `mem_limit`s to fit a smaller VM is equally valid |
+| VM has ≥ 4 CPUs (or `BC_SQL_CPUSET` set) | SQL is pinned to CPUs 0-3; with fewer, container creation fails with "Requested CPUs are not available" |
+| VM memory ≥ 22 GB | the *sum* of the compose `mem_limit`s (sql 10g + bc 12g), so an overrunning container hits its own cgroup limit rather than the VM's OOM killer picking a victim — which is indistinguishable from emulation corruption. Arithmetic, **not** a measured minimum: lowering the `mem_limit`s to fit a smaller VM is equally valid |
 | ≥ 25 GB free in the VM | running out mid-restore fails inside SQL and reads as corruption |
 | FEX present in every amd64 image | with `POC` binfmt an image without it cannot exec at all |
 
@@ -61,8 +62,10 @@ Memory and disk are warnings; the rest are hard stops.
 Then: web client on <http://localhost:8080>, dev endpoint 7049, OData 7048, API
 7052. Sign in as `BCRUNNER` / `Admin123!`.
 
-If SQL dies later, `bash scripts/arm64-recover.sh` recreates it and restores the
-newest backup.
+If SQL dies later, `bash scripts/arm64-recover.sh` recreates it, restores the
+newest backup and recreates BC. After a Docker Desktop restart, run
+`arm64-windows-up.sh` again; it does the same. `--fresh` on either skips the
+restore and starts from the demo database.
 
 ## Why this is different from arm64 Linux
 
@@ -170,15 +173,15 @@ not a clean 20-hour measurement. But 35 min → 20 h is far outside anything the
 noise can explain, and it means the mitigation is *"don't poll SQL with an
 emulated client"* rather than *"accept crash-only operation"*.
 
-`docker-compose.arm64-windows.yml` therefore disables SQL's healthcheck. Nothing
-depended on it: `docker-compose.yml` gates `bc` on `service_started`, and
-`docker-compose.arm64-goal.yml`'s BC healthcheck already does a real TDS
-roundtrip. `arm64-windows-up.sh` reads readiness from SQL's own log line instead.
+`docker-compose.arm64-goal.yml` therefore disables SQL's healthcheck, on Linux
+too. Nothing depended on it: `docker-compose.yml` gates `bc` on
+`service_started`, and the goal overlay's BC healthcheck does a real TDS
+roundtrip. The scripts read readiness from SQL's own log line plus one query.
 
 ### `restart: on-failure` plus a tmpfs data dir destroys the database silently
 
-`docker-compose.arm64-goal.yml` sets `restart: on-failure:10` on sql. Combined
-with the base compose's tmpfs `/var/opt/mssql/data`, a SQLPAL abort becomes:
+An earlier goal overlay set `restart: on-failure:10` on sql. Combined with the
+tmpfs `/var/opt/mssql/data`, a SQLPAL abort became:
 
 > SQL aborts → container restarts → tmpfs is recreated **empty** → the restored
 > CRONUS database and the `bctest` login are gone → NST reports
@@ -186,11 +189,10 @@ with the base compose's tmpfs `/var/opt/mssql/data`, a SQLPAL abort becomes:
 > provided.`
 
 An authentication error, several restarts downstream of a crash that has already
-scrolled out of the log. `docker-compose.arm64-windows-late.yml` sets
-`restart: "no"` on the Windows path; the start script's recreate loop is the
-restart policy, and `arm64-recover.sh` is the correct response to a death.
-ARM64-LESSONS.md already says recovery must *recreate* rather than restart — what
-it does not say is that restarting also destroys the data and misattributes the
+scrolled out of the log. SQL has no restart policy now, on either platform: the
+start script's recreate loop handles startup failures, and `arm64-recover.sh` is
+the response to a death. ARM64-LESSONS.md already says recovery must *recreate*
+rather than restart; restarting also destroys the data and misattributes the
 failure.
 
 ### A healthy container is not a working stack
@@ -203,13 +205,16 @@ nothing. If you are checking whether this is alive, check OData or the API.
 
 Because SQL can die, two things run alongside the stack:
 
-- **`scripts/arm64-backup.sh`** — `COPY_ONLY` CRONUS backups to a separate
-  `/backups` volume that recovery never wipes. Measured **2s** for a 600 MB
-  compressed backup (the tmpfs source helps), so a 5-minute interval is free.
-  `arm64-windows-up.sh` starts this automatically.
+- **`scripts/arm64-backup.sh`** — `COPY_ONLY` backups of `BC_DATABASE` (default
+  CRONUS) to a separate `/backups` volume that recovery never wipes, keeping the
+  newest 6. Measured **2s** for a 600 MB compressed backup (the tmpfs source
+  helps), so a 5-minute interval is free. `arm64-windows-up.sh` starts this
+  automatically.
 - **`scripts/arm64-recover.sh`** — recreates SQL (never restarts it: a restarted
   `sqlservr` hangs in crash recovery under emulation), restores the newest backup,
-  and reboots BC. Validated end to end.
+  and recreates BC. The flow was validated end to end on 2026-08-14; the scripts
+  were reworked since (shared helpers, `sqlcmd -b`, no `MOVE` clause) and have not
+  been re-run on hardware yet.
 
 ## What actually works
 

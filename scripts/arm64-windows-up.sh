@@ -2,11 +2,12 @@
 # Start the BC stack on an arm64 WINDOWS host (Docker Desktop + WSL2), tolerating
 # the ways emulated SQL Server fails here.
 #
-#   scripts/arm64-windows-up.sh [--attempts 5] [--no-backup] [--pull]
+#   scripts/arm64-windows-up.sh [--attempts 5] [--fresh] [--no-backup] [--pull]
 #
-# What it does, and why each step is not optional:
+# Safe to re-run: if SQL and BC are already up and answering, nothing is
+# restarted. What it does, and why each step is not optional:
 #
-#   1. Preflight   — daemon reachable, daemon arch aarch64, VM memory sane.
+#   1. Preflight   — daemon reachable, daemon arch aarch64, VM memory and CPUs sane.
 #   2. binfmt      — via the compose init service, so FEX (not QEMU) handles
 #                    x86-64. Under QEMU, SQL Server dies instantly with
 #                    "uncaught target signal 11". Kernel state, lost on every VM
@@ -14,39 +15,35 @@
 #   3. Image check — the images must have FEX baked in. With binfmt flags POC an
 #                    amd64 image WITHOUT FEX cannot exec anything at all, and says
 #                    only "permission denied".
-#   4. SQL         — start, then retry through the three known startup failure
-#                    modes, reading readiness from SQL's own log rather than a
-#                    healthcheck (see below).
-#   5. BC          — start, wait for "Ready for extensions".
+#   4. SQL         — if it is not up, recreate it and retry through the known
+#                    startup failure modes (roughly 1 start in 3 fails), then
+#                    restore the newest backup unless --fresh is given.
+#   5. BC          — recreated whenever SQL was, then wait for "Ready for extensions".
 #   6. Backups     — background loop, so a later SQL death costs minutes.
 #
-# Readiness is deliberately NOT the docker healthcheck: the stock one runs sqlcmd
-# every 5s, and under FEX every invocation is a whole new emulated guest process.
-# Removing that poll is associated with SQL going from a 35-minute crash to >20h
-# uptime on this box (one observation, host slept twice, near-idle -- see
-# docs/ARM64-WINDOWS.md). docker-compose.arm64-windows.yml disables it.
+# Readiness is read from SQL's own log plus one real query, not a docker
+# healthcheck: a healthcheck polls with sqlcmd, and under emulation every
+# invocation is a whole new emulated process. Removing that poll is associated
+# with SQL going from a 35-minute crash to >20h uptime (one observation, see
+# docs/ARM64-WINDOWS.md). docker-compose.arm64-goal.yml disables it.
 set -uo pipefail
 set +H   # `!}` in ${SA_PASSWORD:-Passw0rd123!} is a history event in an interactive shell
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
-ATTEMPTS=5; DO_BACKUP=1; DO_PULL=0
+ATTEMPTS=5; DO_BACKUP=1; DO_PULL=0; FRESH=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --attempts) ATTEMPTS="$2"; shift 2 ;;
+    --fresh) FRESH=1; shift ;;
     --no-backup) DO_BACKUP=0; shift ;;
     --pull) DO_PULL=1; shift ;;
-    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '2,29p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-ok()   { printf '  \033[32mok\033[0m    %s\n' "$*"; }
-warn() { printf '  \033[33mwarn\033[0m  %s\n' "$*"; }
-die()  { printf '  \033[31mFAIL\033[0m  %s\n' "$*" >&2; exit 1; }
-
 . "$(dirname "${BASH_SOURCE[0]}")/_arm64-compose.sh"
-CF=$(arm64_compose_files)
-SA="${SA_PASSWORD:-Passw0rd123!}"
+C=$(arm64_compose_files)
 AUTH="${BC_SERVER_USERNAME:-BCRUNNER}:${BC_SERVER_PASSWORD:-Admin123!}"
 
 # ── 1. preflight ─────────────────────────────────────────────────────────────
@@ -67,8 +64,16 @@ ok "compose v2 $(docker compose version --short 2>/dev/null)"
 # One probe container for the remaining VM-side facts, so this costs one
 # container start rather than four.
 PROBE=$(docker run --rm --platform linux/arm64 alpine:3.20 sh -c \
-  'printf "%s|%s|%s\n" "$(getconf PAGESIZE)" "$(awk "/MemTotal/{print \$2}" /proc/meminfo)" "$(grep -m1 Features /proc/cpuinfo | cut -d: -f2)"' 2>/dev/null)
-PAGESIZE=${PROBE%%|*}; REST=${PROBE#*|}; VM_KB=${REST%%|*}; CPUFLAGS=${REST#*|}
+  'printf "%s|%s|%s|%s\n" "$(getconf PAGESIZE)" "$(awk "/MemTotal/{print \$2}" /proc/meminfo)" "$(nproc)" "$(grep -m1 Features /proc/cpuinfo | cut -d: -f2)"' 2>/dev/null)
+PAGESIZE=${PROBE%%|*}; REST=${PROBE#*|}; VM_KB=${REST%%|*}; REST=${REST#*|}
+VM_CPUS=${REST%%|*}; CPUFLAGS=${REST#*|}
+
+# docker-compose.arm64-goal.yml pins SQL to CPUs 0-3 (BC_SQL_CPUSET). On a VM with
+# fewer CPUs, container creation fails with "Requested CPUs are not available".
+if [ -z "${BC_SQL_CPUSET:-}" ] && [ "${VM_CPUS:-0}" -lt 4 ] 2>/dev/null; then
+  die "the VM has ${VM_CPUS} CPUs, but SQL is pinned to CPUs 0-3 by default.
+        Set BC_SQL_CPUSET=0-$(( VM_CPUS - 1 )) or give the VM more processors in .wslconfig."
+fi
 
 # FEX emulates x86-64, which assumes 4 KB pages. A 16 KB-page kernel is a
 # different problem entirely and fails much later and far less legibly.
@@ -102,7 +107,7 @@ elif [ -n "$DISK_GB" ]; then
   ok "${DISK_GB} GB free in the VM"
 fi
 
-# The compose mem_limits are 8g (sql) + 14g (bc). If the WSL2 VM is smaller than
+# The compose mem_limits are 10g (sql) + 12g (bc). If the WSL2 VM is smaller than
 # their sum, the VM OOM-kills a container before its own cgroup limit applies --
 # and that looks exactly like the emulation corruption this stack is prone to,
 # which is a genuinely expensive confusion to debug.
@@ -110,9 +115,9 @@ VM_GB=$(( ${VM_KB:-0} / 1048576 ))
 if [ "$VM_GB" -ge 22 ]; then
   ok "WSL2 VM memory ${VM_GB} GB"
 else
-  warn "WSL2 VM has ${VM_GB} GB but the compose mem_limits total 22 GB (sql 8g + bc 14g)."
+  warn "WSL2 VM has ${VM_GB} GB but the compose mem_limits total 22 GB (sql 10g + bc 12g)."
   warn "  This is arithmetic, NOT a measured minimum -- BC's working set is well under"
-  warn "  14g, and nothing here has been tested in a smaller VM. What matters is that"
+  warn "  12g, and nothing here has been tested in a smaller VM. What matters is that"
   warn "  the VM be at least the SUM of the limits, so a container that overruns hits"
   warn "  its OWN cgroup limit and dies attributably, instead of the VM's OOM killer"
   warn "  picking a victim -- which is indistinguishable from the emulation corruption"
@@ -124,8 +129,8 @@ fi
 
 # ── 2. binfmt (idempotent, must re-run after every VM restart) ────────────────
 echo "binfmt"
-docker compose $CF up binfmt 2>&1 | sed -n 's/^binfmt-1  | /  /p'
-docker compose $CF ps -a --format '{{.Service}} {{.ExitCode}}' 2>/dev/null | grep -q '^binfmt 0' \
+docker compose $C up binfmt 2>&1 | sed -n 's/^binfmt[^|]*| /  /p'
+docker compose $C ps -a --format '{{.Service}} {{.ExitCode}}' 2>/dev/null | grep -q '^binfmt 0' \
   || die "binfmt registration failed — without it SQL Server segfaults instantly under QEMU"
 
 # ── 3. images must actually contain FEX ──────────────────────────────────────
@@ -133,14 +138,14 @@ docker compose $CF ps -a --format '{{.Service}} {{.ExitCode}}' 2>/dev/null | gre
 # image without FEX cannot exec even /bin/true, so an exec-based probe cannot tell
 # "no FEX" apart from "broken binfmt".
 echo "images"
-[ "$DO_PULL" = 1 ] && docker compose $CF pull -q 2>/dev/null
+[ "$DO_PULL" = 1 ] && docker compose $C pull -q 2>/dev/null
 # Every AMD64 image in the resolved set must contain FEX; arm64 images (the binfmt
 # init container) must not and are skipped. Keyed on the image's own architecture
 # rather than a hardcoded service list, so this stays correct if a service is added
 # -- and note `docker compose config --images <svc>` does NOT filter by service in
 # Compose 5.3.1, it prints them all, so a per-service lookup would silently check
 # the wrong image.
-for img in $(docker compose $CF config --images 2>/dev/null | sort -u); do
+for img in $(docker compose $C config --images 2>/dev/null | sort -u); do
   docker image inspect "$img" >/dev/null 2>&1 || {
     echo "  pulling $img ..."
     docker pull -q "$img" >/dev/null 2>&1 || die "cannot pull $img"
@@ -164,66 +169,36 @@ for img in $(docker compose $CF config --images 2>/dev/null | sort -u); do
   fi
 done
 
-# ── 4. SQL, retried through its three known startup failure modes ────────────
+# ── 4. SQL: keep a live one, otherwise recreate and restore ──────────────────
+# Recreating SQL empties its tmpfs data dir, so it only happens when SQL is not
+# already up and answering. Re-running this script on a healthy stack (to check
+# it, or after closing the terminal) must not cost the database.
 echo "sql"
-sql_ready() { docker compose $CF logs sql 2>/dev/null | grep -qa 'ready for client connections'; }
-sql_state() { docker inspect --format '{{.State.Status}}' "$(docker compose $CF ps -aq sql 2>/dev/null | head -1)" 2>/dev/null; }
-sql_exit()  { docker inspect --format '{{.State.ExitCode}}' "$(docker compose $CF ps -aq sql 2>/dev/null | head -1)" 2>/dev/null; }
-
-started=0
-for i in $(seq 1 "$ATTEMPTS"); do
-  docker compose $CF up -d --force-recreate sql >/dev/null 2>&1
-  t0=$(date +%s); verdict=""
-  while [ $(( $(date +%s) - t0 )) -lt 150 ]; do
-    if sql_ready; then verdict=ready; break; fi
-    st=$(sql_state)
-    if [ "$st" != running ]; then verdict="died:$(sql_exit)"; break; fi
-    sleep 5
-  done
-  [ -z "$verdict" ] && verdict=hung
-
-  case "$verdict" in
-    ready)
-      ok "SQL ready in $(( $(date +%s) - t0 ))s (attempt $i)"; started=1; break ;;
-    died:139)
-      # QEMU, not FEX, handled the exec. Retrying cannot help.
-      die "SQL segfaulted instantly (exit 139) — that is the QEMU signature.
-        binfmt is not pointing at FEX. Re-run this script; if it persists check:
-          docker run --privileged --rm --platform linux/arm64 alpine:3.20 \\
-            sh -c 'mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null; \\
-                   cat /proc/sys/fs/binfmt_misc/FEX-x86_64'" ;;
-    died:134|died:248)
-      warn "SQL hit the known SQLPAL startup crash (exit ${verdict#died:}) — attempt $i/$ATTEMPTS, recreating" ;;
-    died:*)
-      warn "SQL exited ${verdict#died:} — attempt $i/$ATTEMPTS, recreating" ;;
-    hung)
-      # Container alive, sqlservr at ~1% CPU, only the banner lines ever printed.
-      # Recreating is the documented fix: the tmpfs data dir comes back empty, so
-      # there is no crash recovery to wedge on.
-      warn "SQL hung at startup (no 'ready' line in 150s) — attempt $i/$ATTEMPTS, recreating" ;;
-  esac
-done
-[ "$started" = 1 ] || die "SQL would not start in $ATTEMPTS attempts. Roughly 1 start in 3 fails
-        on this platform; try again, or see docs/ARM64-WINDOWS.md."
-
-# Prove it with a real query before handing it to BC.
-docker compose $CF exec -T sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA" \
-  -C -No -h-1 -W -Q "SELECT 'tds_ok'" 2>/dev/null | grep -q tds_ok \
-  && ok "SQL answers a real TDS query" || warn "SQL logged ready but did not answer a query"
+SQL_NEW=0
+if arm64_sql_ok; then
+  ok "SQL already up and answering — left as is"
+else
+  arm64_start_sql "$ATTEMPTS" || die "SQL would not start in $ATTEMPTS attempts. Roughly 1 start in 3
+        fails on this platform; try again, or see docs/ARM64-WINDOWS.md."
+  SQL_NEW=1
+  if [ "$FRESH" = 0 ]; then
+    arm64_restore_newest_backup || [ $? = 2 ] || ok "no backup yet; BC restores the demo database"
+  fi
+fi
 
 # ── 5. BC ────────────────────────────────────────────────────────────────────
+# A bc that outlived its SQL holds an NST pointed at a database that no longer
+# exists, so it is recreated whenever SQL was. Recreating also means the log
+# only holds this boot's lines, so "Ready for extensions" cannot come from an
+# older container.
 echo "bc"
-docker compose $CF up -d bc >/dev/null 2>&1
-t0=$(date +%s)
-while [ $(( $(date +%s) - t0 )) -lt 2400 ]; do
-  if docker compose $CF logs bc 2>/dev/null | grep -qa 'Ready for extensions'; then
-    ok "BC ready in $(( $(date +%s) - t0 ))s"; break
-  fi
-  if [ "$(sql_state)" != running ]; then
-    die "SQL died while BC was booting (exit $(sql_exit)). Run scripts/arm64-recover.sh"
-  fi
-  sleep 10
-done
+if [ "$SQL_NEW" = 0 ] && [ "$(arm64_state bc)" = running ] \
+   && docker compose $C logs bc 2>/dev/null | grep -qa 'Ready for extensions'; then
+  ok "BC already up — left as is"
+else
+  docker compose $C up -d --no-deps --force-recreate bc >/dev/null 2>&1
+  arm64_wait_bc 2400
+fi
 
 # ── 6. backups ───────────────────────────────────────────────────────────────
 if [ "$DO_BACKUP" = 1 ]; then
@@ -247,8 +222,8 @@ echo "endpoints"
 # that moment reports HTTP 000 for a service that is merely a few seconds behind —
 # which reads as a failure on an otherwise perfect run.
 probe() {
-  local url="$1" code=000 i
-  for i in $(seq 1 12); do
+  local url="$1" code=000
+  for _ in $(seq 1 12); do
     code=$(curl -s -o /dev/null -w '%{http_code}' -L --max-time 20 -u "$AUTH" "$url" 2>/dev/null)
     [ "$code" = 200 ] && break
     sleep 5

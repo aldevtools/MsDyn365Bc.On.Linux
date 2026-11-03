@@ -1,0 +1,6 @@
+# Shell scripts run inside Linux containers, and docker-compose.arm64-windows.yml
+# bind-mounts one straight from the checkout. Git for Windows defaults to
+# core.autocrlf=true, which turns them into CRLF files that fail with
+# "$'\r': command not found". Scoped to *.sh so nothing else in the repo is
+# renormalised.
+*.sh text eol=lf
