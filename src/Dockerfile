@@ -59,10 +59,11 @@ RUN /build/output/tools/NavUserPasswordInspector/NavUserPasswordInspector self-t
 
 # Native libSkiaSharp.so for BC's report renderer, one per SkiaSharp line
 # Microsoft has shipped (BC 28.x = 3.119.0; 2.88.9 covers the 2.88.x line;
-# BC 30.0.57338 insider = 4.152.1).
+# BC 30.0.57338 insider and BC 27.5/28.5 hotfixes since 2026-11-02 = 4.152.1).
 # The entrypoint version-matches the artifact's managed SkiaSharp.dll and links
 # the right one (plus the harfbuzz symlink) into the service dir — see the
-# "report rendering natives" step there. nupkgs are plain zips.
+# "report rendering natives" step there. nupkgs are plain zips. A version missing
+# here is downloaded at boot, which costs a few seconds per boot, so add new ones.
 RUN mkdir -p /build/output/skia && \
     for v in 2.88.9 3.119.0 4.152.1; do \
       curl -fsSL "https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.Linux/$v" -o /tmp/skia.nupkg && \
