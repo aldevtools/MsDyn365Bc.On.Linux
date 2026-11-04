@@ -1358,6 +1358,15 @@ jobs:
             done
           fi
           SKIPPED_COUNT=0
+          # A restored database has the old versions of our apps installed. By
+          # default BC recompiles their installed dependents on every publish,
+          # and a changed signature breaks that recompile. skip_publish_app_ids
+          # must not list an app whose dependencies changed, so every dependent
+          # of a changed app is published from build/ later in this loop anyway;
+          # skip BC's recompile.
+          if [ -n "$DATABASE_BAK" ]; then
+            export BC_DEPENDENCY_PUBLISHING=ignore
+          fi
           while IFS= read -r d; do
             [ -z "$d" ] && continue
             app="build/$(basename "$d").app"

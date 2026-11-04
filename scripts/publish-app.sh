@@ -64,6 +64,15 @@ bc_publish_app() {
     # overrides it.
     local max_time="${BC_PUBLISH_TIMEOUT:-600}"
 
+    # By default BC recompiles and reinstalls every installed app that depends
+    # on the published one, from that app's installed source. When a caller
+    # republishes those dependents itself anyway (a restored database whose
+    # changed apps are all published again), that recompile only gets in the
+    # way: a changed signature breaks the old dependent and fails the publish.
+    # BC_DEPENDENCY_PUBLISHING=ignore skips it.
+    local query="SchemaUpdateMode=forcesync"
+    [ -n "${BC_DEPENDENCY_PUBLISHING:-}" ] && query="${query}&DependencyPublishingOption=${BC_DEPENDENCY_PUBLISHING}"
+
     local body
     body=$(mktemp)
     local code started elapsed
@@ -71,7 +80,7 @@ bc_publish_app() {
     code=$(curl -s -o "$body" -w "%{http_code}" --max-time "$max_time" \
         -u "$auth" -X POST \
         -F "file=@${app};type=application/octet-stream" \
-        "${dev_url}/apps?SchemaUpdateMode=forcesync" 2>/dev/null)
+        "${dev_url}/apps?${query}" 2>/dev/null)
     elapsed=$(( $(date +%s) - started ))
     # Logged for every publish, so the margin to the limit shows in the log
     # before it is used up.
@@ -101,7 +110,7 @@ bc_publish_app() {
 
     echo ""
     echo "ERROR: dev endpoint returned HTTP $code for $(basename "$app")"
-    echo "       URL: ${dev_url}/apps?SchemaUpdateMode=forcesync"
+    echo "       URL: ${dev_url}/apps?${query}"
     echo "       Body:"
     sed 's/^/         /' "$body"
     echo ""
