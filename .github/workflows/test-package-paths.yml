@@ -1,0 +1,30 @@
+name: Test package paths
+
+on:
+  pull_request:
+    paths:
+      - 'src/tools/PatchNclTestPage/**'
+      - 'tests/package-paths/**'
+      - '.github/workflows/test-package-paths.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/tools/PatchNclTestPage/**'
+      - 'tests/package-paths/**'
+      - '.github/workflows/test-package-paths.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package-paths:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet run --project tests/package-paths/PackagePaths.csproj --configuration Release
