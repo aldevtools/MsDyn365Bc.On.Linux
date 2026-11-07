@@ -697,11 +697,11 @@ PYEOF
         ln -sf /usr/lib/x86_64-linux-gnu/libharfbuzz.so.0 "$SERVICE_DIR/libharfbuzz.so"
         log_step "Report rendering natives linked (SkiaSharp $SKIA_VER + system harfbuzz)"
     else
-        # Not only reports: BC loads SkiaSharp when it publishes any app, also one with no
-        # report, so every dev-endpoint publish fails with "The type initializer for
-        # 'SkiaSharp.SkiaApi' threw an exception" (issue #219). The boot then stops at the
-        # test toolkit publish below.
-        log_step "WARN: no libSkiaSharp.so for SkiaSharp '$SKIA_VER' (not in the image, and the NuGet download failed). Every app publish will fail, not only report rendering; harfbuzz is not linked either"
+        # Not only reports. On BC 29.0 with SkiaSharp 4.152.1 every dev-endpoint publish failed,
+        # also for apps with no report, with "The type initializer for 'SkiaSharp.SkiaApi' threw
+        # an exception" (issue #219). BC 27.5 with SkiaSharp 3.119.0 still published its test
+        # toolkit. If a publish fails, the boot stops at the test toolkit publish below.
+        log_step "WARN: no libSkiaSharp.so for SkiaSharp '$SKIA_VER' (not in the image, and the NuGet download failed). Report rendering is disabled and harfbuzz is not linked; app publishing can fail too (issue #219)"
     fi
 
     # Layer 5: MockTest.dll for test framework (required by Test Library)
