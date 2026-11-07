@@ -120,6 +120,8 @@ services:
       BC_SERVER_PASSWORD: ${BC_SERVER_PASSWORD:-Admin123!}
       BC_CLEAR_ALL_APPS: ${BC_CLEAR_ALL_APPS:-false}
       BC_SKIP_APP_PUBLISH: ${BC_SKIP_APP_PUBLISH:-false}
+      # Set to 1 to finish the boot even when an app the boot publishes fails (issue #219).
+      BC_ALLOW_PUBLISH_FAILURES: ${BC_ALLOW_PUBLISH_FAILURES:-}
       BC_KEEP_APP_IDS: ${BC_KEEP_APP_IDS:-}
       # Custom license override: when set, the entrypoint imports the file
       # at this path INSTEAD of the artifact's default Cronus.bclicense.
