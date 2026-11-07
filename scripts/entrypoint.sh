@@ -1332,6 +1332,15 @@ else
     sed -i "s|PublicWebBaseUrl\" value=\"[^\"]*\"|PublicWebBaseUrl\" value=\"\"|" "$SERVICE_DIR/CustomSettings.config"
 fi
 
+# Service-tier settings the caller asks for, as Key=Value lines (issue #218). Runs every boot,
+# before NST reads the file; the script restores keys a previous boot changed, because
+# /bc/service is a volume. A malformed entry stops the boot.
+if [ -n "${BC_SERVER_SETTINGS:-}" ] || [ -f "$SERVICE_DIR/.bc-server-settings-original.json" ]; then
+    log_step "Applying BC_SERVER_SETTINGS to CustomSettings.config"
+    python3 -I /bc/scripts/apply-server-settings.py "$SERVICE_DIR/CustomSettings.config" | sed 's/^/[entrypoint]   /'
+    [ "${PIPESTATUS[0]}" = "0" ] || { log_step "FATAL: BC_SERVER_SETTINGS could not be applied"; exit 1; }
+fi
+
 log_step "Config check:"
 grep -E "DatabaseServer|DatabaseName|DatabaseUserName|ProtectedDatabase" "$SERVICE_DIR/CustomSettings.config" | head -5
 log_step "Pre-seeding R2R extension DLL cache..."
