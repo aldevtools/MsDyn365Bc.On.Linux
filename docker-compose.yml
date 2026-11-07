@@ -176,6 +176,9 @@ services:
       BC_TEST_APPS: ${BC_TEST_APPS:-}
       # Seconds each dev-endpoint publish at boot may take (default 600).
       BC_PUBLISH_TIMEOUT: ${BC_PUBLISH_TIMEOUT:-}
+      # Service-tier settings written into CustomSettings.config before NST starts, as
+      # Key=Value lines or separated by ";" (issue #218). Example: DisableWriteInsideTryFunctions=false
+      BC_SERVER_SETTINGS: ${BC_SERVER_SETTINGS:-}
       # Opt-in: self-host Microsoft's real BC web client on Kestrel (port 8080).
       # EXPERIMENTAL PoC — see docs/WEBCLIENT-POC.md.
       BC_WEBCLIENT: ${BC_WEBCLIENT:-0}
