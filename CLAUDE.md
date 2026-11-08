@@ -1300,6 +1300,10 @@ to make sure the consumer-side path still works end-to-end.
 
 `BC_WEBCLIENT=1` must not go in the tracked `.env`. Compose reads that file in every checkout, so CI and every consumer workflow start the web client too. The web client also sets `PublicWebBaseUrl` to `http://localhost:8080/`, and `GetUrl(ClientType::Web, ...)` is built from that value: `http://host:port/BC/?company=X` becomes `http://localhost:8080/?company=X`. A Windows container has `/BC/`. `entrypoint.sh` clears the setting on a boot with the web client off, because `/bc/service` is a volume and the old value would stay. The dev container sets the variable in `containerEnv` in `devcontainer.json`, which applies to `setup.sh` and to its terminals. Smoke codeunit 70079 guards this, so it fails when you run it locally with the web client on.
 
+## Service-tier settings from the caller (issue #218)
+
+`BC_SERVER_SETTINGS` (the `server_settings` input on both reusable workflows) holds `Key=Value` lines, or pairs separated by `;`. `scripts/apply-server-settings.py` writes them into `CustomSettings.config` on every boot, before NST starts, and adds a key the file does not have. `/bc/service` is a volume, so the script saves each key's original value in `.bc-server-settings-original.json` the first time it changes it and restores those values at the start of every boot. A key removed from the input therefore goes back to what the artifact shipped. A malformed entry stops the boot. Smoke codeunit 70081 guards it: `test-versions.yml` passes `DisableWriteInsideTryFunctions=false`, and the codeunit inserts a row inside a TryFunction, which a default tier refuses.
+
 ## CI
 
 The bc-linux project ships **three** reusable workflows in

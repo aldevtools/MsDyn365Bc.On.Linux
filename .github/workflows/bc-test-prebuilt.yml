@@ -133,6 +133,16 @@ on:
         required: false
         type: string
         default: ""
+      server_settings:
+        description: >-
+          Service-tier settings to write into CustomSettings.config before BC
+          starts, one Key=Value per line (or separated by ";"), passed on as
+          BC_SERVER_SETTINGS. A key the file does not have is added. Blank
+          (default) changes nothing. Example: DisableWriteInsideTryFunctions=false
+          (issue #218).
+        required: false
+        type: string
+        default: ""
       test_runner_codeunit_id:
         description: >-
           Run the test suite through this test runner codeunit, for example
@@ -235,6 +245,8 @@ jobs:
       BC_SQL_IMAGE: ${{ inputs.sql_image }}
       # Job-level: the entrypoint, the publish step and run-tests.sh all read it.
       BC_PUBLISH_TIMEOUT: ${{ inputs.publish_timeout }}
+      # Read by the entrypoint before NST starts (issue #218).
+      BC_SERVER_SETTINGS: ${{ inputs.server_settings }}
       BC_VERSION: ${{ inputs.bc_version }}
       BC_COUNTRY: ${{ inputs.bc_country }}
       BC_TYPE: ${{ inputs.bc_type }}

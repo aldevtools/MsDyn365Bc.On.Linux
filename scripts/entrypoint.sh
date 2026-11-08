@@ -15,6 +15,9 @@ log_step() {
     echo "[entrypoint] [${elapsed}s] $*"
 }
 
+# Markers from an earlier run of this container (docker restart keeps /tmp).
+rm -f /tmp/bc-ready /tmp/bc-boot-failed
+
 # Restore runtime DLLs from .bak if they exist (container restart recovery).
 # Patch #15 renames runtime DLLs AFTER BC loads them into memory.
 # On restart, BC needs the real DLLs to boot, so we restore first.
@@ -705,7 +708,11 @@ PYEOF
         ln -sf /usr/lib/x86_64-linux-gnu/libharfbuzz.so.0 "$SERVICE_DIR/libharfbuzz.so"
         log_step "Report rendering natives linked (SkiaSharp $SKIA_VER + system harfbuzz)"
     else
-        log_step "WARN: no bundled libSkiaSharp.so for SkiaSharp '$SKIA_VER' — report rendering stays disabled (harfbuzz not linked either)"
+        # Not only reports. On BC 29.0 with SkiaSharp 4.152.1 every dev-endpoint publish failed,
+        # also for apps with no report, with "The type initializer for 'SkiaSharp.SkiaApi' threw
+        # an exception" (issue #219). BC 27.5 with SkiaSharp 3.119.0 still published its test
+        # toolkit. If a publish fails, the boot stops at the test toolkit publish below.
+        log_step "WARN: no libSkiaSharp.so for SkiaSharp '$SKIA_VER' (not in the image, and the NuGet download failed). Report rendering is disabled and harfbuzz is not linked; app publishing can fail too (issue #219)"
     fi
 
     # Layer 5: MockTest.dll for test framework (required by Test Library)
@@ -1343,6 +1350,15 @@ else
     sed -i "s|PublicWebBaseUrl\" value=\"[^\"]*\"|PublicWebBaseUrl\" value=\"\"|" "$SERVICE_DIR/CustomSettings.config"
 fi
 
+# Service-tier settings the caller asks for, as Key=Value lines (issue #218). Runs every boot,
+# before NST reads the file; the script restores keys a previous boot changed, because
+# /bc/service is a volume. A malformed entry stops the boot.
+if [ -n "${BC_SERVER_SETTINGS:-}" ] || [ -f "$SERVICE_DIR/.bc-server-settings-original.json" ]; then
+    log_step "Applying BC_SERVER_SETTINGS to CustomSettings.config"
+    python3 -I /bc/scripts/apply-server-settings.py "$SERVICE_DIR/CustomSettings.config" | sed 's/^/[entrypoint]   /'
+    [ "${PIPESTATUS[0]}" = "0" ] || { log_step "FATAL: BC_SERVER_SETTINGS could not be applied"; exit 1; }
+fi
+
 log_step "Config check:"
 grep -E "DatabaseServer|DatabaseName|DatabaseUserName|ProtectedDatabase" "$SERVICE_DIR/CustomSettings.config" | head -5
 log_step "Pre-seeding R2R extension DLL cache..."
@@ -1643,6 +1659,26 @@ exec 3>/tmp/bc-stdin
     echo "[entrypoint] Patch #15: Skipped (merged assemblies handle type-forwarding)"
 
     # Publish test framework apps unless caller will handle all publishing.
+    # Apps the boot publishes itself (keep-set install, test toolkit, Test Runner Extension).
+    # Any that fails stops the boot before /tmp/bc-ready, so the healthcheck does not report a
+    # tier that is missing its test toolkit (issue #219). BC_ALLOW_PUBLISH_FAILURES=1 goes on.
+    BOOT_PUBLISH_FAILED=""
+    # $1 app name, $2 HTTP code, $3 file with the response body (may be missing)
+    boot_publish_check() {
+        case "$2" in
+            200|201|204) return 0 ;;
+        esac
+        if [ "$2" = "422" ] && [ -f "$3" ] \
+            && grep -qiE "already (deployed|installed|published)|duplicate package" "$3" \
+            && ! grep -qiE "publishing failed|could not install the extension|original extensions have been restored" "$3"; then
+            return 0
+        fi
+        BOOT_PUBLISH_FAILED="$BOOT_PUBLISH_FAILED
+  $1 (HTTP $2)"
+        [ -f "$3" ] && sed 's/^/[entrypoint]     /' "$3" | head -20
+        return 1
+    }
+
     # BC_SKIP_APP_PUBLISH=true: skip all publishing (caller manages extensions)
     if [ "${BC_SKIP_APP_PUBLISH:-false}" = "true" ]; then
         echo "[entrypoint] Skipping app publishing (BC_SKIP_APP_PUBLISH=true)"
@@ -1899,7 +1935,7 @@ PYEOF
                     echo "[entrypoint]   $NAME: HTTP $HTTP (already deployed — skip)"
                 else
                     echo "[entrypoint]   $NAME: HTTP $HTTP"
-                    sed 's/^/[entrypoint]     /' /tmp/install-tenant.out
+                    boot_publish_check "$NAME" "$HTTP" /tmp/install-tenant.out || true
                 fi
                 rm -f /tmp/install-tenant.out
             done <<< "$INSTALL_ORDER"
@@ -1951,11 +1987,13 @@ PYEOF
             while IFS= read -r APP_PATH; do
                 [ -z "$APP_PATH" ] && continue
                 NAME=$(basename "$APP_PATH")
-                HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$PUBLISH_TIMEOUT" \
+                HTTP=$(curl -s -o /tmp/toolkit-publish.out -w "%{http_code}" --max-time "$PUBLISH_TIMEOUT" \
                     -u "$BC_SERVER_USERNAME:$BC_SERVER_PASSWORD" -X POST \
                     -F "file=@$APP_PATH;type=application/octet-stream" \
                     "$DEV_URL/apps?SchemaUpdateMode=synchronize" 2>/dev/null)
                 echo "[entrypoint]   $NAME: HTTP $HTTP"
+                boot_publish_check "$NAME" "$HTTP" /tmp/toolkit-publish.out || true
+                rm -f /tmp/toolkit-publish.out
             done <<< "$TF_INSTALL_ORDER"
         fi
 
@@ -1984,11 +2022,13 @@ PYEOF
         # Publish our TestRunner Extension (custom API for test execution, depends on MS Test Runner)
         if [ -f /bc/testrunner/TestRunner.app ]; then
             echo "[entrypoint] Publishing Test Runner Extension..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            HTTP_CODE=$(curl -s -o /tmp/testrunner-publish.out -w "%{http_code}" --max-time 30 \
                 -u "$BC_SERVER_USERNAME:$BC_SERVER_PASSWORD" -X POST \
                 -F "file=@/bc/testrunner/TestRunner.app;type=application/octet-stream" \
                 "$DEV_URL/apps?SchemaUpdateMode=synchronize" 2>&1)
             echo "[entrypoint] Test Runner Extension: HTTP $HTTP_CODE"
+            boot_publish_check "Test Runner Extension" "$HTTP_CODE" /tmp/testrunner-publish.out || true
+            rm -f /tmp/testrunner-publish.out
 
             # Report the tenant encryption key (issue #75). The key itself is
             # created by that extension's install codeunit, through BC's own
@@ -2004,6 +2044,21 @@ PYEOF
             else
                 echo "[entrypoint] WARN: no tenant encryption key — AL encryption calls will fail with 'An encryption key is required to complete the request.'"
             fi
+        fi
+    fi
+    if [ -n "$BOOT_PUBLISH_FAILED" ]; then
+        echo "[entrypoint] ERROR: these apps failed to publish during boot:$BOOT_PUBLISH_FAILED"
+        echo "[entrypoint]        The response body is printed under each one above. Tests that need them would fail later."
+        if [ "${BC_ALLOW_PUBLISH_FAILURES:-0}" = "1" ]; then
+            echo "[entrypoint]        BC_ALLOW_PUBLISH_FAILURES=1: continuing anyway."
+        else
+            echo "[entrypoint]        Stopping the container (issue #219). Set BC_ALLOW_PUBLISH_FAILURES=1 to continue anyway."
+            # This runs in a background subshell; exiting here alone would leave the tier up and
+            # unhealthy for the healthcheck's 30 minutes. Stop NST, and the supervisor loop at the
+            # end of this script exits the container with rc 1 when it sees the marker.
+            touch /tmp/bc-boot-failed
+            kill -TERM "$(cat /tmp/bc-nst.pid 2>/dev/null)" 2>/dev/null
+            exit 1
         fi
     fi
     TOTAL_ELAPSED=$(( $(date +%s) - ENTRYPOINT_START ))
@@ -2047,6 +2102,10 @@ while true; do
         echo "[entrypoint] NST exited (rc=$RC) — restart requested, relaunching"
         start_nst
         continue
+    fi
+    if [ -f /tmp/bc-boot-failed ]; then
+        echo "[entrypoint] NST stopped because an app failed to publish during boot — container is stopping"
+        exit 1
     fi
     echo "[entrypoint] NST exited (rc=$RC) — no restart requested, container is stopping"
     exit "$RC"
