@@ -603,14 +603,24 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
     fi
     log_step "Patched Nav.Ncl.dll (test codeunits call their HttpClientHandler)"
     # Windows Language table: ICU lists zh-TW, zh-HK, zh-SG and zh-MO only under script names
-    # (zh-Hant-TW, ...), so BC dropped them (issue #198). Same failure rule as above.
+    # (zh-Hant-TW, ...), so BC dropped them (issue #198), and leaves 34 more cultures out of
+    # its listing (issue #223). Same failure rule as above.
     LANG_PATCH_OUT=$($PATCHER windowslanguages "$SERVICE_DIR/Microsoft.Dynamics.Nav.Types.dll" 2>&1) && LANG_PATCH_RC=0 || LANG_PATCH_RC=$?
     echo "$LANG_PATCH_OUT" | tail -2
     if [ "$LANG_PATCH_RC" != "0" ]; then
         log_step "ERROR: Windows Language patch for Nav.Types.dll failed (exit $LANG_PATCH_RC)"
         exit 1
     fi
-    log_step "Patched Nav.Types.dll (Windows Language table lists the Chinese regional cultures)"
+    log_step "Patched Nav.Types.dll (Windows Language table lists the Windows cultures)"
+    # Language Selection and Windows Language rows: names, tags, abbreviation and code page
+    # come from ICU's culture data; the Windows values are used instead (issue #223).
+    LANGROWS_PATCH_OUT=$($PATCHER windowslanguagerows "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1) && LANGROWS_PATCH_RC=0 || LANGROWS_PATCH_RC=$?
+    echo "$LANGROWS_PATCH_OUT" | tail -2
+    if [ "$LANGROWS_PATCH_RC" != "0" ]; then
+        log_step "ERROR: Windows Language rows patch for Nav.Ncl.dll failed (exit $LANGROWS_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Ncl.dll (Language Selection and Windows Language rows carry the Windows values)"
     # Text behaviour a Windows tier has and Linux does not (issue #113). Both are constants
     # inside CoreLib's precompiled code, so no runtime hook can reach them; BC's own call
     # sites are rewritten in the IL instead.

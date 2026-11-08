@@ -62,6 +62,8 @@ class Program
             return PatchTestHttpHandler.Run(inputPath, outputPath);
         if (command == "windowslanguages")
             return PatchWindowsLanguages.Run(inputPath, outputPath);
+        if (command == "windowslanguagerows")
+            return PatchWindowsLanguages.RunRows(inputPath, outputPath);
         if (command == "dateformula")
             return PatchDateFormula.Run(inputPath, outputPath);
         if (command == "stringcompare")
