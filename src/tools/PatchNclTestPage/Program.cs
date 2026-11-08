@@ -64,6 +64,8 @@ class Program
             return PatchWindowsLanguages.Run(inputPath, outputPath);
         if (command == "dateformula")
             return PatchDateFormula.Run(inputPath, outputPath);
+        if (command == "stringcompare")
+            return PatchStringCompare.Run(inputPath, outputPath);
         if (command == "filetable")
             return PatchFileTable.Run(inputPath, outputPath);
 
