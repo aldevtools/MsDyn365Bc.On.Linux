@@ -56,6 +56,7 @@ dotnet "$PATCHER" filelisting "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&
 dotnet "$PATCHER" windowslanguages "$WORK/patched/Microsoft.Dynamics.Nav.Types.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
 dotnet "$PATCHER" filetable "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
 dotnet "$PATCHER" dateformula "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Added|ERROR)" | sed "s/^/[verify]   /"
+dotnet "$PATCHER" stringcompare "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
 dotnet "$PATCHER" testhttphandler "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
 [ -f "$WORK/patched/YamlDotNet.dll" ] && \
     dotnet "$PATCHER" newline "$WORK/patched/YamlDotNet.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"

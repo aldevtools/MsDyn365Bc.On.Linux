@@ -570,6 +570,17 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         exit 1
     fi
     log_step "Patched Nav.Ncl.dll (DateFormula values compare as different when their units differ)"
+    # Temporary table sort order: CollationAwareStringComparer uses the database collation's
+    # culture. NLS on Windows gives the hyphen and the apostrophe no weight at the first level, ICU
+    # here sorts them before letters, so a temporary table put A-B before AB (issue #222). Same
+    # failure rule as above.
+    SC_PATCH_OUT=$($PATCHER stringcompare "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1) && SC_PATCH_RC=0 || SC_PATCH_RC=$?
+    echo "$SC_PATCH_OUT" | tail -2
+    if [ "$SC_PATCH_RC" != "0" ]; then
+        log_step "ERROR: temporary table sort order patch for Nav.Ncl.dll failed (exit $SC_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched Nav.Ncl.dll (temporary tables sort the hyphen and the apostrophe as on Windows)"
     # [HttpClientHandler] in a test codeunit: BC only calls the handler when the topology says
     # "local environment", and Patch #9's topology says no (issue #192). This one read answers
     # yes, as StandardServiceTopology does on Windows. Same failure rule as above.
