@@ -499,6 +499,17 @@ fi
 # Nav.Types.dll: TestClientProxy Assembly.Load (version-qualified) → LoadFrom
 if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
     PATCHER="dotnet /bc/tools/patcher/PatchNclTestPage.dll"
+    # Package entries use '/' even on Windows. A backslash-only Trim in the package reader
+    # skips add-in/permission/profile registration on Linux (issue #216). Apply before NST
+    # loads CodeAnalysis, independently of the optional Windows-text behaviour patches.
+    PACKAGE_PATCH_OUT=$($PATCHER packagepaths "$SERVICE_DIR/Microsoft.Dynamics.Nav.CodeAnalysis.dll" 2>&1) && PACKAGE_PATCH_RC=0 || PACKAGE_PATCH_RC=$?
+    echo "$PACKAGE_PATCH_OUT" | tail -2
+    if [ "$PACKAGE_PATCH_RC" != "0" ]; then
+        log_step "ERROR: package directory patch for CodeAnalysis.dll failed (exit $PACKAGE_PATCH_RC)"
+        exit 1
+    fi
+    log_step "Patched CodeAnalysis.dll (package directories use either separator)"
+
     if $PATCHER ncl "$SERVICE_DIR/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | tail -1; then
         log_step "Patched Nav.Ncl.dll (TestPage Assembly.Load → LoadFrom)"
     fi

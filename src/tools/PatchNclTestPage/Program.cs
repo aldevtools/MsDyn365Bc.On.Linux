@@ -70,6 +70,8 @@ class Program
             return PatchStringCompare.Run(inputPath, outputPath);
         if (command == "filetable")
             return PatchFileTable.Run(inputPath, outputPath);
+        if (command == "packagepaths")
+            return PatchPackagePaths.Run(inputPath, outputPath);
 
         // Default: patch Nav.Ncl.dll
 

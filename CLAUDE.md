@@ -1039,6 +1039,20 @@ Things that bit, so they stay fixed:
 What is not fixed (collation, the `SystemId` version nibbles, default decimal places) is in
 the table at the top of `KNOWN-LIMITATIONS.md` with what is known about each.
 
+## Package-directory registration (issue #216)
+
+`PatchNclTestPage packagepaths` patches the `ReadDirectoryFilePaths` predicate in
+CodeAnalysis before NST loads it. Package entries use `/`; the original
+`Path.GetDirectoryName(file).Trim('\\')` leaves a leading slash on Linux, so
+installation silently skipped packaged add-ins. The helper handles package paths
+independently of the host separator, including the other directories sharing this
+predicate. Ordinary filesystem calls are untouched. This patch is independent of
+`BC_WINDOWS_TEXT` and refuses an unexpected method layout. The patcher fingerprint
+in the service-volume stamp invalidates old patched service caches.
+
+Smoke codeunit 70080 guards actual tenant registration, and
+`tests/package-paths` covers separator handling on Windows and Linux.
+
 ## Web client on Linux (PoC, opt-in)
 
 `BC_WEBCLIENT=1 docker compose up -d --wait` self-hosts Microsoft's real
