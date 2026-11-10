@@ -1,0 +1,75 @@
+# Target configuration: all apps + web client, with every mitigation that has a
+# mechanism behind it. Layer AFTER the platform overlay (docker-compose.arm64.yml
+# or docker-compose.arm64-windows.yml) and docker-compose.arm64-disk.yml.
+services:
+  sql:
+    # NO restart policy, on purpose. The data dir is a tmpfs, so a restarted SQL
+    # comes back EMPTY: the restored database and the bctest login are gone, and
+    # the NST reports "Login failed for user 'bctest'" three restarts downstream
+    # of a SQLPAL crash that has already scrolled out of the log (measured
+    # 2026-08-13). A restart also does nothing for a HUNG sqlservr. The response
+    # to a SQL death is scripts/arm64-recover.sh, which recreates SQL and restores
+    # the newest backup.
+    #
+    # Fewer visible CPUs => fewer SOS schedulers and worker threads => fewer
+    # threads that can be mid-instruction when a signal lands. SQLPAL rewrites
+    # ucontext in signal handlers like CoreCLR does, so this is the same defect
+    # class — but SQLPAL has no ThreadSuspendInjection equivalent, so thread-count
+    # reduction is the only lever available. Part of the measured working config
+    # (12-core Oryon), not measured on its own. Needs at least 4 CPUs; on a smaller
+    # host set BC_SQL_CPUSET, e.g. 0-1, in .env: it is read on every compose call,
+    # so an `export` in one terminal is gone by the time arm64-recover.sh runs.
+    cpuset: "${BC_SQL_CPUSET:-0-3}"
+    # No SQL healthcheck. The stock one runs sqlcmd every 5s, and under emulation
+    # every run is a whole new emulated process racing SQLPAL's startup. Measured
+    # on Windows/WSL2: enabled, SQL aborted (exit 134) after 35.5 min; disabled,
+    # >20 h uptime (n=1 each, see docs/ARM64-WINDOWS.md). Nothing waits on it: the
+    # base compose gates bc on service_started, bc's healthcheck below does a TDS
+    # roundtrip, and the scripts read SQL's own log line.
+    healthcheck:
+      disable: true
+    environment:
+      MSSQL_MEMORY_LIMIT_MB: "${MSSQL_MEMORY_LIMIT_MB:-3072}"
+  bc:
+    restart: on-failure:10
+    # The stock healthcheck curls ODataV4/Company, which the NST answers from
+    # cache — that is how this stack reported "healthy" for an hour while SQL was
+    # dead and every request hung. Probe BOTH tiers: any HTTP answer from the dev
+    # endpoint for the NST (not -f: /BC/dev/metadata only exists on BC 28+, and a
+    # 404 still proves the NST is serving), and a real TDS roundtrip from inside
+    # the bc container for the database. Deliberately NOT an OData business query:
+    # those are the calls that crash the emulated NST, and a healthcheck must
+    # never be the thing that kills the app.
+    healthcheck:
+      # curl gets 10s so the emulated sqlcmd start still fits inside timeout.
+      test: ["CMD-SHELL", "curl -s --max-time 10 -o /dev/null -u \"$${BC_SERVER_USERNAME:-BCRUNNER}:$${BC_SERVER_PASSWORD:-Admin123!}\" http://localhost:7049/BC/dev/metadata && /opt/mssql-tools18/bin/sqlcmd -S \"$${SQL_SERVER:-sql}\" -U sa -P \"$${SA_PASSWORD:-Passw0rd123!}\" -C -No -b -Q 'SELECT 1' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 25s
+      retries: 3
+      start_period: 600s
+    environment:
+      # --- the three that got Base Application booting ---
+      FEX_VECTORTSOENABLED: "1"
+      FEX_MEMCPYSETTSOENABLED: "1"
+      DOTNET_EnableWriteXorExecute: "0"
+      # --- the mechanism behind heavy-query crashes ---
+      # Light calls survive, business queries die. Business queries allocate and
+      # JIT heavily -> frequent GC -> frequent SuspendEE -> SIGRTMIN injected into
+      # threads mid-instruction, which is the corruption chain the minimal repro
+      # pins at 0/20 -> 20/20. This is a retail knob and is what Microsoft's own
+      # runtime does automatically for x64-on-arm64 Windows emulation.
+      # Residual risk: a call-free, allocation-free managed hot loop can stall
+      # SuspendEE with no retail timeout. AL-compiled code is pathologically
+      # call-dense, so exposure is BCL/platform loops, not business logic.
+      DOTNET_INTERNAL_ThreadSuspendInjection: "0"
+      DOTNET_gcServer: "1"
+      DOTNET_TieredCompilation: "0"
+      # --- all apps, R2R preserved ---
+      # 'none' keeps every pre-installed extension. Do NOT republish through the
+      # dev endpoint: that disables ReadyToRun and recompiles, which both adds
+      # boot concurrency and removes precompiled code (less JIT = less for FEX's
+      # SMC tracking to get wrong).
+      BC_CLEAR_ALL_APPS: "none"
+      BC_SKIP_APP_PUBLISH: "true"
+      # --- web client on the image's own Kestrel host (docs/WEBCLIENT-POC.md) ---
+      BC_WEBCLIENT: "1"

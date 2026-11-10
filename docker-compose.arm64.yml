@@ -1,0 +1,70 @@
+# arm64 Linux host, amd64 containers. Needs FEX and its binfmt handler on the
+# host: scripts/setup-arm64-host.sh installs and checks both.
+#
+# FEX is invoked by the kernel via binfmt_misc, but it is dynamically linked,
+# so the aarch64 loader and its four libraries have to be visible INSIDE the
+# container. FEX_ROOTFS=/ tells FEX to use the container's own x86-64 rootfs
+# instead of downloading one.
+#
+# HOME is not optional. FEX needs a writable HOME for its config dir and for
+# the FEXServer handshake; the mssql image runs as uid 10001 with no HOME set
+# at all, so FEX falls back to './.config/fex-emu/' in an unwritable cwd and
+# dies with 'Couldn't connect to FEXServer socket'. Verified: HOME alone fixes
+# it, XDG_CONFIG_HOME alone does not.
+#
+# The loader is mounted from /lib/ld-linux-aarch64.so.1 (Debian/Ubuntu). On a
+# distro that only has /lib64/ld-linux-aarch64.so.1, change both mount lines.
+#
+# Usage (the full set; see README.md and docs/ARM64-LESSONS.md):
+#   docker compose -f docker-compose.yml -f docker-compose.arm64.yml \
+#     -f docker-compose.arm64-disk.yml -f docker-compose.arm64-goal.yml up -d --wait
+services:
+  sql:
+    platform: linux/amd64
+    # core: 0 is NOT optional, and it is not about disk space. FEX reserves a
+    # ~35 GB virtual address space to emulate x86-64. When an emulated process
+    # faults, the kernel hands that core to whatever core_pattern points at --
+    # on Ubuntu that is apport, which processed it to ~20 GB resident and drove
+    # a 30 GB machine into global OOM three times, taking the host down.
+    # Learned the hard way on 2026-08-12.
+    ulimits:
+      core: 0
+    # A hard cap so a runaway process kills its own container instead of the
+    # desktop. The tmpfs data dir is charged to this cgroup too: up to 6g of
+    # database files (docker-compose.arm64-disk.yml) plus MSSQL_MEMORY_LIMIT_MB.
+    mem_limit: 10g
+    environment:
+      FEX_ROOTFS: /
+      HOME: /tmp
+    volumes:
+      - /usr/bin/FEX:/usr/bin/FEX:ro
+      - /usr/bin/FEXServer:/usr/bin/FEXServer:ro
+      - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+      - /usr/lib/aarch64-linux-gnu/libstdc++.so.6:/usr/lib/aarch64-linux-gnu/libstdc++.so.6:ro
+      - /usr/lib/aarch64-linux-gnu/libm.so.6:/usr/lib/aarch64-linux-gnu/libm.so.6:ro
+      - /usr/lib/aarch64-linux-gnu/libgcc_s.so.1:/usr/lib/aarch64-linux-gnu/libgcc_s.so.1:ro
+      - /usr/lib/aarch64-linux-gnu/libc.so.6:/usr/lib/aarch64-linux-gnu/libc.so.6:ro
+  bc:
+    platform: linux/amd64
+    # core: 0 is NOT optional, and it is not about disk space. FEX reserves a
+    # ~35 GB virtual address space to emulate x86-64. When an emulated process
+    # faults, the kernel hands that core to whatever core_pattern points at --
+    # on Ubuntu that is apport, which processed it to ~20 GB resident and drove
+    # a 30 GB machine into global OOM three times, taking the host down.
+    # Learned the hard way on 2026-08-12.
+    ulimits:
+      core: 0
+    # A hard cap so a runaway emulated NST kills its own container instead of
+    # the desktop. Tune up if BC needs more; do not remove.
+    mem_limit: 16g
+    environment:
+      FEX_ROOTFS: /
+      HOME: /tmp
+    volumes:
+      - /usr/bin/FEX:/usr/bin/FEX:ro
+      - /usr/bin/FEXServer:/usr/bin/FEXServer:ro
+      - /lib/ld-linux-aarch64.so.1:/lib/ld-linux-aarch64.so.1:ro
+      - /usr/lib/aarch64-linux-gnu/libstdc++.so.6:/usr/lib/aarch64-linux-gnu/libstdc++.so.6:ro
+      - /usr/lib/aarch64-linux-gnu/libm.so.6:/usr/lib/aarch64-linux-gnu/libm.so.6:ro
+      - /usr/lib/aarch64-linux-gnu/libgcc_s.so.1:/usr/lib/aarch64-linux-gnu/libgcc_s.so.1:ro
+      - /usr/lib/aarch64-linux-gnu/libc.so.6:/usr/lib/aarch64-linux-gnu/libc.so.6:ro
