@@ -15,3 +15,6 @@ services:
     # Rootful podman mounts the tmpfs at /var/opt/mssql/data owned by root,
     # which the image's non-root mssql user cannot write to.
     user: "0:0"
+    # Podman rejects uid=/gid= tmpfs options; root needs none.
+    tmpfs: !override
+      - /var/opt/mssql/data:size=4g
