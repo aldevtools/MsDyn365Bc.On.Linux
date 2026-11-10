@@ -1213,12 +1213,21 @@ elif [ "${BC_CLEAR_ALL_APPS:-false}" = "true" ] || [ "${BC_CLEAR_ALL_APPS:-false
     " 2>/dev/null
     log_step "Cleared ALL pre-installed apps (BC_CLEAR_ALL_APPS=true)"
 else
+    # Only the framework apps that are published but not installed for any tenant: that is
+    # their state in a freshly restored database. When the database survived from an earlier
+    # boot (only the bc container was recreated, issue #229), the earlier boot installed them
+    # and other apps depend on them. Deleting those rows made every republish fail with
+    # "tries to replace the existing AppSource app", and the boot stopped.
     $SQLCMD_DB -Q "
-    DELETE FROM [Installed Application] WHERE [Package ID] IN (SELECT [Package ID] FROM [Published Application] WHERE [Name] IN (N'Test Runner',N'Library Assert',N'Library Variable Storage',N'Permissions Mock',N'Any'));
-    DELETE FROM [NAV App Installed App] WHERE [Name] IN (N'Test Runner',N'Library Assert',N'Library Variable Storage',N'Permissions Mock',N'Any');
-    DELETE FROM [Published Application] WHERE [Name] IN (N'Test Runner',N'Library Assert',N'Library Variable Storage',N'Permissions Mock',N'Any');
+    SET NOCOUNT ON;
+    SELECT [Package ID] INTO #fw FROM [Published Application] pa
+    WHERE pa.[Name] IN (N'Test Runner',N'Library Assert',N'Library Variable Storage',N'Permissions Mock',N'Any')
+      AND NOT EXISTS (SELECT 1 FROM [NAV App Installed App] iaa WHERE iaa.[Package ID] = pa.[Package ID]);
+    DELETE FROM [Installed Application] WHERE [Package ID] IN (SELECT [Package ID] FROM #fw);
+    DELETE FROM [Published Application] WHERE [Package ID] IN (SELECT [Package ID] FROM #fw);
+    DROP TABLE #fw;
     " 2>/dev/null
-    log_step "Cleared test framework global entries (will re-publish via dev endpoint)"
+    log_step "Cleared test framework apps that are published but not installed (will re-publish via dev endpoint)"
 fi
 
 # Service user for scripting/OData/dev endpoint/web client sign-in (SUPER access).
