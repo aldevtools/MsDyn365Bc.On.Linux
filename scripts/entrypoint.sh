@@ -647,11 +647,17 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         # OnClosePage is shown by NavFormCloseHandler (Nav.Client.UI) as the page text, two
         # Environment.NewLine and the error; TestPageClient joins validation errors with it.
         # GetLastErrorText turns each CRLF into "\" with Nav.Ncl's (patched) CRLF, so these two
-        # must write CRLF as well, or the LFs reach AL unchanged.
+        # must write CRLF as well, or the LFs reach AL unchanged. A failed patch stops the
+        # boot: the other text patches pipe through tail, which hides the patcher's exit code.
         for TXT_ASM in Microsoft.Dynamics.Nav.Client.UI Microsoft.Dynamics.Nav.Client.TestPageClient; do
-            if [ -f "$SERVICE_DIR/$TXT_ASM.dll" ] && $PATCHER newline "$SERVICE_DIR/$TXT_ASM.dll" 2>&1 | tail -1; then
-                log_step "Patched $TXT_ASM.dll (newline, Windows text behaviour)"
+            [ -f "$SERVICE_DIR/$TXT_ASM.dll" ] || continue
+            CLIENT_NL_OUT=$($PATCHER newline "$SERVICE_DIR/$TXT_ASM.dll" 2>&1) && CLIENT_NL_RC=0 || CLIENT_NL_RC=$?
+            echo "$CLIENT_NL_OUT" | tail -1
+            if [ "$CLIENT_NL_RC" != "0" ]; then
+                log_step "ERROR: newline patch for $TXT_ASM.dll failed (exit $CLIENT_NL_RC)"
+                exit 1
             fi
+            log_step "Patched $TXT_ASM.dll (newline, Windows text behaviour)"
         done
     fi
 fi
