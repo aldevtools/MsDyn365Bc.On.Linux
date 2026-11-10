@@ -965,7 +965,11 @@ almost all of them trace to a few values .NET bakes into CoreLib's precompiled c
 ANSI code page there). No runtime hook reaches a constant inside R2R code, but the BC call
 sites are ordinary IL, so `src/tools/PatchNclTestPage` rewrites them on disk in Step 2b of
 `entrypoint.sh`. Four commands, each idempotent, applied to `Nav.Ncl.dll` and `Nav.Types.dll`
-(`newline` also to `YamlDotNet.dll`):
+(`newline` also to `YamlDotNet.dll`, `Nav.Client.UI.dll` and `Nav.Client.TestPageClient.dll`).
+The two client assemblies matter because TestPage runs BC's client layer inside the server
+(issue #227): an OnClosePage error is built there with `Environment.NewLine`, and
+`GetLastErrorText` only turns CRLF into `\`, so an unpatched client layer left two line feeds
+in AL where Windows has `\\`. Smoke codeunit 70084 guards it.
 
 | command | what it changes |
 |---|---|
