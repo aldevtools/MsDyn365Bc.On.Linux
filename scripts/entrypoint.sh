@@ -220,8 +220,10 @@ SERVICE_CONFIG_FP=$(printf '%s|%s|%s' "$SQL_SERVER" "$BC_DB_USER" "$BC_DB_PASSWO
 # alone is not enough: a change to PatchNclTestPage (or BC_WINDOWS_TEXT) rewrites the
 # service DLLs but leaves StartupHook.dll untouched, so a warm volume kept the DLLs the
 # previous patcher produced and the new patch never ran.
+# The leading version is bumped when this script patches an assembly it did not patch
+# before without the patcher changing (v3: Nav.Client.UI and TestPageClient, issue #227).
 SERVICE_PATCHER_FP="$(stat -c '%s-%Y' /bc/tools/patcher/PatchNclTestPage.dll 2>/dev/null || echo none)-text${BC_WINDOWS_TEXT:-1}"
-SERVICE_STAMP="v2|platform=$PLATFORM_VERSION|image=$(stat -c '%s-%Y' /bc/hook/StartupHook.dll 2>/dev/null || echo unknown)|patcher=$SERVICE_PATCHER_FP|config=$SERVICE_CONFIG_FP"
+SERVICE_STAMP="v3|platform=$PLATFORM_VERSION|image=$(stat -c '%s-%Y' /bc/hook/StartupHook.dll 2>/dev/null || echo unknown)|patcher=$SERVICE_PATCHER_FP|config=$SERVICE_CONFIG_FP"
 if [ -f "$SERVICE_DIR/Microsoft.Dynamics.Nav.Server.dll" ] && \
    [ "$(cat "$SERVICE_STAMP_FILE" 2>/dev/null || true)" != "$SERVICE_STAMP" ]; then
     log_step "Service tier in the volume was built by a different platform/image — rebuilding it"
@@ -641,6 +643,22 @@ if [ -f /bc/tools/patcher/PatchNclTestPage.dll ]; then
         if [ -f "$SERVICE_DIR/YamlDotNet.dll" ] && $PATCHER newline "$SERVICE_DIR/YamlDotNet.dll" 2>&1 | tail -1; then
             log_step "Patched YamlDotNet.dll (newline, Windows text behaviour)"
         fi
+        # TestPage runs BC's client layer inside the server (issue #227). An error raised in
+        # OnClosePage is shown by NavFormCloseHandler (Nav.Client.UI) as the page text, two
+        # Environment.NewLine and the error; TestPageClient joins validation errors with it.
+        # GetLastErrorText turns each CRLF into "\" with Nav.Ncl's (patched) CRLF, so these two
+        # must write CRLF as well, or the LFs reach AL unchanged. A failed patch stops the
+        # boot: the other text patches pipe through tail, which hides the patcher's exit code.
+        for TXT_ASM in Microsoft.Dynamics.Nav.Client.UI Microsoft.Dynamics.Nav.Client.TestPageClient; do
+            [ -f "$SERVICE_DIR/$TXT_ASM.dll" ] || continue
+            CLIENT_NL_OUT=$($PATCHER newline "$SERVICE_DIR/$TXT_ASM.dll" 2>&1) && CLIENT_NL_RC=0 || CLIENT_NL_RC=$?
+            echo "$CLIENT_NL_OUT" | tail -1
+            if [ "$CLIENT_NL_RC" != "0" ]; then
+                log_step "ERROR: newline patch for $TXT_ASM.dll failed (exit $CLIENT_NL_RC)"
+                exit 1
+            fi
+            log_step "Patched $TXT_ASM.dll (newline, Windows text behaviour)"
+        done
     fi
 fi
 

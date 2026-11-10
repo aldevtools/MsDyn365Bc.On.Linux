@@ -5,7 +5,7 @@
 #   scripts/verify-patched-il.sh <bc-service-dir> [patcher-dll]
 #
 #   <bc-service-dir>  a directory holding BC's service tier DLLs (Nav.Ncl, Nav.Types,
-#                     YamlDotNet), e.g. <artifact>/platform/ServiceTier/PFiles64/
+#                     YamlDotNet, Nav.Client.UI, TestPageClient), e.g. <artifact>/platform/ServiceTier/PFiles64/
 #                     Microsoft Dynamics NAV/<n>/Service
 #   [patcher-dll]     default src/tools/PatchNclTestPage/bin/Release/net8.0/PatchNclTestPage.dll
 #
@@ -61,9 +61,13 @@ dotnet "$PATCHER" stringcompare "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2
 dotnet "$PATCHER" testhttphandler "$WORK/patched/Microsoft.Dynamics.Nav.Ncl.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
 [ -f "$WORK/patched/YamlDotNet.dll" ] && \
     dotnet "$PATCHER" newline "$WORK/patched/YamlDotNet.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
+for asm in Microsoft.Dynamics.Nav.Client.UI Microsoft.Dynamics.Nav.Client.TestPageClient; do
+    [ -f "$WORK/patched/$asm.dll" ] && \
+        dotnet "$PATCHER" newline "$WORK/patched/$asm.dll" 2>&1 | grep -E "^(Rewrote|ERROR)" | sed "s/^/[verify]   /"
+done
 
 status=0
-for asm in Microsoft.Dynamics.Nav.Ncl Microsoft.Dynamics.Nav.Types YamlDotNet; do
+for asm in Microsoft.Dynamics.Nav.Ncl Microsoft.Dynamics.Nav.Types YamlDotNet Microsoft.Dynamics.Nav.Client.UI Microsoft.Dynamics.Nav.Client.TestPageClient; do
     [ -f "$SVC/$asm.dll" ] || continue
     echo "[verify] ilverify $asm (original, then patched)"
     ilverify "$SVC/$asm.dll"            -r "$RT/*.dll" -r "$SVC/*.dll"            --system-module System.Private.CoreLib > "$WORK/out/$asm.orig" 2>&1
@@ -76,6 +80,7 @@ def errors(path):
         line = line.strip()
         line = re.sub(r"\[/[^\]]*?\.dll : ", "[", line)   # the file path differs between runs
         line = re.sub(r"Verifying .*$", "Verifying", line)
+        line = re.sub(r"^All Classes and Methods in .* Verified\.$", "All verified", line)   # carries the path too
         out.add(line)
     return out
 before, after = errors(sys.argv[1]), errors(sys.argv[2])
