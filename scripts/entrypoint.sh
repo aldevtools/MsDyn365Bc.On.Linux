@@ -1262,6 +1262,11 @@ fi
 # plaintext is never passed on argv, written to SQL, or logged.
 USER_GUID='00000000-0000-0000-0000-000000000001'
 BC_SERVER_USERNAME="${BC_SERVER_USERNAME:-BCRUNNER}"
+# BC stores user names in upper case and the database compares them case-sensitively, so a
+# lower-case name here (e.g. admin) breaks every lookup of the current user by name: the
+# Contoso Demo Tool stops with "The user name ADMIN does not exist." Signing in ignores case,
+# so admin still works after this.
+BC_SERVER_USERNAME="${BC_SERVER_USERNAME^^}"
 BC_SERVER_PASSWORD="${BC_SERVER_PASSWORD:-Admin123!}"
 if [ -z "$BC_SERVER_PASSWORD" ]; then
     log_step "ERROR: BC_SERVER_PASSWORD must not be empty"
