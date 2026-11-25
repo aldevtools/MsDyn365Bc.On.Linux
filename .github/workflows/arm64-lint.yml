@@ -1,0 +1,48 @@
+# Static checks for the arm64 overlays and scripts. Nothing else in CI touches
+# them, and none of this needs arm64 hardware: it only proves the overlay sets
+# still merge with docker-compose.yml and the scripts still lint.
+name: arm64 lint
+
+on:
+  pull_request:
+    paths:
+      - docker-compose.yml
+      - docker-compose.arm64*.yml
+      - scripts/_arm64-compose.sh
+      - scripts/arm64-*.sh
+      - scripts/setup-arm64-host.sh
+      - .github/workflows/arm64-lint.yml
+  push:
+    branches: [master]
+    paths:
+      - docker-compose.yml
+      - docker-compose.arm64*.yml
+      - scripts/_arm64-compose.sh
+      - scripts/arm64-*.sh
+      - scripts/setup-arm64-host.sh
+      - .github/workflows/arm64-lint.yml
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Overlay sets merge
+        run: |
+          set -euo pipefail
+          for platform in docker-compose.arm64.yml docker-compose.arm64-windows.yml; do
+            echo "== $platform"
+            docker compose -f docker-compose.yml -f "$platform" \
+              -f docker-compose.arm64-disk.yml -f docker-compose.arm64-goal.yml config -q
+          done
+
+      - name: shellcheck
+        # SC2086: $C holds several -f arguments and is split on purpose.
+        # SC1091: the sourced helper is checked on its own.
+        run: |
+          shellcheck -S warning -e SC2086,SC1091 \
+            scripts/_arm64-compose.sh scripts/arm64-*.sh scripts/setup-arm64-host.sh

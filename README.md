@@ -52,6 +52,29 @@ Just to start BC and run AL tests:
 Running on an Apple Silicon Mac (podman + Rosetta)? See [MacOS.md](MacOS.md)
 for the extra setup steps and the `docker-compose.macos.yml` overlay.
 
+On **Windows on ARM** (Snapdragon X, …) there is a working path via Docker
+Desktop and FEX-Emu: `bash scripts/arm64-windows-up.sh` brings the whole stack
+up, and [docs/ARM64-WINDOWS.md](docs/ARM64-WINDOWS.md) is the how-to. BC boots in
+~150s with all apps and the web client; **SQL Server under emulation is the weak
+point** — it fails roughly one start in three and can die under load, so that doc
+also covers the backup/recover loop that makes it usable. Experimental.
+
+On an **arm64 Linux** host (Ampere, Graviton, Snapdragon, …) the same x86-64
+images run under FEX-Emu. `bash scripts/setup-arm64-host.sh` installs FEX and
+checks the host, then:
+
+```bash
+export COMPOSE_FILE=docker-compose.yml:docker-compose.arm64.yml:docker-compose.arm64-disk.yml:docker-compose.arm64-goal.yml
+docker compose up -d --wait
+```
+
+Measured on Ubuntu 26.04 / Qualcomm Oryon: all 137 apps and the web client,
+`Ready for extensions` in 127s. SQL Server is the weak point here too: if `up`
+reports that sql exited, run it again, and see
+[docs/ARM64-LESSONS.md](docs/ARM64-LESSONS.md) for the backup/recover scripts and
+the settings that made it stable. SQL is pinned to 4 CPUs; on a smaller host add
+`BC_SQL_CPUSET=0-1` to `.env`. Experimental.
+
 That's it — **no .NET SDK on the host is required**. The WebSocket test
 runner used by `run-tests.sh` is bundled inside the bc-runner image and
 invoked via `docker compose exec`, so all the .NET work happens in the
