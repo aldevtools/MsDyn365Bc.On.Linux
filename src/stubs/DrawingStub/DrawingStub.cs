@@ -911,6 +911,17 @@ namespace System.Drawing
         public void Clear(Color color) { }
         public void FillRectangle(Brush brush, RectangleF rect) { }
         public void FillRectangle(Brush brush, Rectangle rect) { }
+        // Base Application's "O365 Brand Color".MakePicture() fills a circle; the Contoso demo
+        // tool and new evaluation companies reach it. Without these the AL DotNet call fails with
+        // "The type of one or more arguments does not match the method's parameter type".
+        public void FillEllipse(Brush brush, Rectangle rect) { }
+        public void FillEllipse(Brush brush, RectangleF rect) { }
+        public void FillEllipse(Brush brush, int x, int y, int width, int height) { }
+        public void FillEllipse(Brush brush, float x, float y, float width, float height) { }
+        public void DrawEllipse(Pen pen, Rectangle rect) { }
+        public void DrawEllipse(Pen pen, RectangleF rect) { }
+        public void DrawEllipse(Pen pen, int x, int y, int width, int height) { }
+        public void DrawEllipse(Pen pen, float x, float y, float width, float height) { }
         public void DrawString(string s, Font font, Brush brush, RectangleF layoutRectangle, StringFormat? format) { }
         public void DrawString(string s, Font font, Brush brush, PointF point) { }
         public void DrawImage(Image image, Point point) { }
