@@ -344,6 +344,20 @@ on:
         required: false
         type: string
         default: ""
+      pre_compile_script:
+        description: >-
+          Opt-in bash script run once, with the working directory set to the
+          checkout of your repo (project/), after checkout and before symbols
+          are staged and anything is compiled. It edits the build tree only:
+          nothing is committed, and actions/checkout cleans the tree at the
+          next job start. Typical use: grant `internalsVisibleTo` to a test app
+          at build time, so the app you ship never carries that grant (what an
+          AL-Go BuildInitialize hook does on Windows). Runs with
+          `bash -euo pipefail`; a non-zero exit fails the job. Blank (default):
+          the step is skipped, no behavior change.
+        required: false
+        type: string
+        default: ""
       test_runner_codeunit_id:
         description: >-
           Run the test suite through this test runner codeunit, for example
@@ -636,6 +650,15 @@ jobs:
           repository: ${{ vars.BC_LINUX_REPOSITORY || 'aldevtools/MsDyn365Bc.On.Linux' }}
           ref: ${{ inputs.bc_linux_ref }}
           path: bc-linux
+
+      # Opt-in caller hook on the build tree (e.g. build-time internalsVisibleTo).
+      # Passed through env, never interpolated into the script text.
+      - name: Pre-compile script
+        if: ${{ inputs.pre_compile_script != '' }}
+        working-directory: project
+        env:
+          PRE_COMPILE_SCRIPT: ${{ inputs.pre_compile_script }}
+        run: bash -euo pipefail -c "$PRE_COMPILE_SCRIPT"
 
       - name: Initialize timing
         run: bash bc-linux/scripts/workflow-summary.sh init
