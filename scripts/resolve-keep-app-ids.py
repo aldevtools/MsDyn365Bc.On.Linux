@@ -41,6 +41,10 @@ import sys
 import zipfile
 from pathlib import Path
 
+# Make sibling helpers importable when invoked as `python3 .../resolve-keep-app-ids.py`
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _bcapp import is_platform_copy  # noqa: E402
+
 # ── Baseline (always kept) ────────────────────────────────────────────────
 # Stable across BC versions. Including any of these in BC_KEEP_APP_IDS is
 # harmless even if the app is not actually published in this BC build —
@@ -189,8 +193,12 @@ def load_artifact_apps(artifact_dir: str) -> dict:
                 continue
             info = read_app_info(os.path.join(root, f))
             if info and info.get("id"):
-                # Don't overwrite an already-loaded app id (first write wins).
-                apps.setdefault(info["id"], info)
+                # First write wins, except that a country artifact copy replaces
+                # a platform (W1) copy: their dependencies can differ.
+                existing = apps.setdefault(info["id"], info)
+                if (is_platform_copy(existing["path"], artifact_dir)
+                        and not is_platform_copy(info["path"], artifact_dir)):
+                    apps[info["id"]] = info
     return apps
 
 
