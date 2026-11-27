@@ -51,6 +51,12 @@ jobs:
       - name: Third-party dependencies publish in dependency order
         run: python3 scripts/test-sort-apps-for-publish.py
 
+      # The platform artifact ships W1 apps under the same ids and versions as
+      # the country apps. Picking the W1 Base Application breaks every compile
+      # that uses a country field.
+      - name: A country app wins over the platform copy
+        run: python3 scripts/test-bcapp-country-copy.py
+
       # run-tests.sh batches its codeunit list across several suite-setup
       # requests once the joined ids pass BC's 2048-character CodeunitIds
       # field. A batch lost in that loop does not look like an error — it

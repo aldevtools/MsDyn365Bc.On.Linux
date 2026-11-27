@@ -7,14 +7,15 @@ A BC .app file is a zip containing one of:
   - app.json (rare fallback)
 
 This module exposes a single uniform reader (`read_app_info`) plus a
-walker that indexes every .app under a directory tree, keeping the
-highest-versioned copy when the same app id appears more than once.
+walker that indexes every .app under a directory tree. When the same app id
+appears more than once, a country artifact copy beats a platform/ copy, and
+the highest version wins among copies from the same side.
 
 Used by:
   - stage-symbols.py    (manifest-driven .alpackages staging)
-  - resolve-keep-app-ids.py historically inlined a copy of these helpers
-    — kept there for now to avoid risk of regression; new code should
-    import from here.
+  - resolve-keep-app-ids.py (is_platform_copy only; it historically inlined a
+    copy of the other helpers — kept there for now to avoid risk of
+    regression; new code should import from here)
 """
 
 from __future__ import annotations
@@ -158,12 +159,29 @@ def version_tuple(v: str) -> tuple:
     return tuple(parts[:4])
 
 
+def is_platform_copy(app_path: str, artifact_dir: str) -> bool:
+    """True when the app comes from the platform artifact (<dir>/platform/...).
+
+    The platform artifact ships the W1 apps. A country artifact ships its own
+    Base Application under the same id, often with the same version, and only
+    that one has the country's tables and fields.
+    """
+    top = os.path.relpath(app_path, artifact_dir).split(os.sep)[0]
+    return top.lower() == "platform"
+
+
 def load_artifact_apps(artifact_dir: str) -> dict:
     """Walk an artifact tree and index every .app by its app id.
 
     When the same id appears multiple times (different paths or versions),
-    keep the highest version. Returns dict: id -> info dict.
+    a country artifact copy beats a platform copy; among copies from the same
+    side the highest version wins. Returns dict: id -> info dict.
     """
+
+    def rank(info: dict) -> tuple:
+        return (not is_platform_copy(info["path"], artifact_dir),
+                version_tuple(info["version"]))
+
     apps: dict = {}
     for root, _, files in os.walk(artifact_dir):
         for f in files:
@@ -173,6 +191,6 @@ def load_artifact_apps(artifact_dir: str) -> dict:
             if not info or not info.get("id"):
                 continue
             existing = apps.get(info["id"])
-            if existing is None or version_tuple(info["version"]) > version_tuple(existing["version"]):
+            if existing is None or rank(info) > rank(existing):
                 apps[info["id"]] = info
     return apps
