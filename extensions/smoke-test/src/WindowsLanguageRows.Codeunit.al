@@ -2,8 +2,8 @@
 // rows in both Language Selection and Windows Language. The image listed 214: ICU leaves 34
 // cultures out of CultureInfo.GetCultures although it knows them by their Windows names
 // (arn-CL, en-029, the Sami and Quechua cultures, ...). BC also builds each row from ICU's
-// culture data, so 49 names, two tags, one abbreviation and, on BC 27/28, the Primary CodePage
-// of 44 rows differed. BC 29 reads the abbreviation from its own table off Windows, which has
+// culture data, so 49 names, two tags, one abbreviation and, on the .NET 8 builds of BC 27/28, the
+// Primary CodePage of 44 rows differed. BC 29 reads the abbreviation from its own table off Windows, which has
 // QUT for 1158 and nothing for 1164 (ZZZ). The expected values below are the Windows ones (the Language Selection
 // table read on Windows, and corpus codeunit 92700 for Windows Language).
 codeunit 70083 "BC Linux Windows Language Rows"
@@ -45,16 +45,12 @@ codeunit 70083 "BC Linux Windows Language Rows"
         AssertWindows(1081, 'Hindi (India)', 'hi-IN', 'HIN', Utf8CodePage());
     end;
 
-    // Windows BC 27.5 and 28.5 give 65001 for a culture with no OEM code page, a BC 29 SaaS
-    // sandbox gives 1. The System Application's version gives the BC major.
+    // A culture with no OEM code page gives 1 on Windows BC 27.5, 28.5 and 29.0 (measured 2026-11-26 on the
+    // .NET 10 builds Microsoft republished for BC 27/28, corpus probe PR 1607). The older .NET 8 builds of
+    // BC 27/28 gave 65001; those builds are no longer published.
     local procedure Utf8CodePage(): Text
-    var
-        Info: ModuleInfo;
     begin
-        NavApp.GetModuleInfo('63ca2fa4-4f03-4f2b-a480-172fef340d3f', Info);
-        if Info.AppVersion.Major >= 29 then
-            exit('1');
-        exit('65001');
+        exit('1');
     end;
 
     local procedure AssertSelection(LanguageId: Integer; Name: Text; Tag: Text; Abbreviation: Text)
